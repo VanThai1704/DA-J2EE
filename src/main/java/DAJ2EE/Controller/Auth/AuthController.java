@@ -1,4 +1,4 @@
-package DAJ2EE.Controller.Auth;
+package DAJ2EE.controller.Auth;
 
 public class AuthController {
 

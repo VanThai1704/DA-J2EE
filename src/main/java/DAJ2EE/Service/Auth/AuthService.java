@@ -1,4 +1,4 @@
-package DAJ2EE.Service.Auth;
+package DAJ2EE.service.Auth;
 
 public class AuthService {
 
