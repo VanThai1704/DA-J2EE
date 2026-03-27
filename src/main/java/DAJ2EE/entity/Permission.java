@@ -3,17 +3,15 @@ package DAJ2EE.entity;
 import jakarta.persistence.*;
 import lombok.Data;
 import java.util.Set;
-
-@Entity(name = "roles")
-@Table(name = "roles")
 @Data
-public class Role {
+@Entity(name = "permissions")
+@Table(name = "permissions")
+public class Permission {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
     private String name;
-    @OneToMany(mappedBy = "role", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "permission", cascade = CascadeType.ALL)
     private Set<RolePermission> rolePermissions;
 }

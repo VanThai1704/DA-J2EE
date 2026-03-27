@@ -1,5 +1,10 @@
 package DAJ2EE.entity;
 
+import java.time.LocalDateTime;
+
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
 import DAJ2EE.enums.GenderEnum;
 import jakarta.persistence.*;
 import lombok.Data;
@@ -35,4 +40,10 @@ public class User {
     @JoinColumn(name = "role_id", nullable = false)
     private Role role;
 
+    private Boolean isActive = true;
+
+    @CreationTimestamp
+    private LocalDateTime createdAt;
+    @UpdateTimestamp
+    private LocalDateTime updatedAt;
 }
