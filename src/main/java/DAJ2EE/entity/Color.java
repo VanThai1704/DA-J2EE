@@ -1,32 +1,20 @@
 package DAJ2EE.entity;
 
-import jakarta.persistence.*;
-import lombok.Data;
-import java.time.LocalDateTime;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
 
-@Entity(name = "colors")
+@Getter
+@Setter
+@Entity
 @Table(name = "colors")
-@Data
-public class Color {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+public class Color extends BaseEntity {
 
-    @Column(nullable = false)
+    @Column(nullable = false, unique = true, length = 100)
     private String name;
 
-    @Column(name = "hex_code")
+    @Column(nullable = false, unique = true, length = 20)
     private String hexCode;
-
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
-
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
-
-    @Column(name = "is_deleted")
-    private Boolean isDeleted;
-
-    @Column(name = "deleted_at")
-    private LocalDateTime deletedAt;
 }

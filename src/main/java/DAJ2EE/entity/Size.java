@@ -9,9 +9,9 @@ import lombok.Setter;
 @Getter
 @Setter
 @Entity
-@Table(name = "categories")
-public class Category extends BaseEntity {
+@Table(name = "sizes")
+public class Size extends BaseEntity {
 
-    @Column(nullable = false, unique = true, length = 120)
+    @Column(nullable = false, unique = true, length = 50)
     private String name;
 }
