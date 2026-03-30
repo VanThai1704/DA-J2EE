@@ -51,4 +51,8 @@ public class ProductVariantService {
         variant.setDeletedAt(LocalDateTime.now());
         productVariantRepository.save(variant);
     }
+
+    public List<ProductVariant> findByProduct(Long productId) {
+        return productVariantRepository.findByProductIdAndIsDeletedFalse(productId);
+    }
 }

@@ -9,4 +9,6 @@ import java.util.List;
 @Repository
 public interface ProductRepository extends JpaRepository<Product, Long> {
     List<Product> findByIsDeletedFalse();
+    List<Product> findByNameContainingIgnoreCaseAndIsDeletedFalse(String name);
+    List<Product> findByCategoryIdAndIsDeletedFalse(Long categoryId);
 }

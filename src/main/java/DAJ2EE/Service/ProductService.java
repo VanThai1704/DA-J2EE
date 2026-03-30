@@ -46,6 +46,23 @@ public class ProductService {
         Product product = findById(id).orElseThrow(() -> new RuntimeException("Product not found"));
         product.setIsDeleted(true);
         product.setDeletedAt(LocalDateTime.now());
+        
+        // Cascading soft delete for variants
+        if (product.getVariants() != null) {
+            product.getVariants().forEach(variant -> {
+                variant.setIsDeleted(true);
+                variant.setDeletedAt(LocalDateTime.now());
+            });
+        }
+        
         productRepository.save(product);
+    }
+
+    public List<Product> searchByName(String name) {
+        return productRepository.findByNameContainingIgnoreCaseAndIsDeletedFalse(name);
+    }
+
+    public List<Product> findByCategory(Long categoryId) {
+        return productRepository.findByCategoryIdAndIsDeletedFalse(categoryId);
     }
 }
