@@ -37,7 +37,7 @@ public class ProductVariantService {
         variant.setProduct(variantDetails.getProduct());
         variant.setName(variantDetails.getName());
         variant.setColor(variantDetails.getColor());
-        variant.setSizeId(variantDetails.getSizeId());
+        variant.setSize(variantDetails.getSize());
         variant.setPrice(variantDetails.getPrice());
         variant.setStock(variantDetails.getStock());
         variant.setSku(variantDetails.getSku());

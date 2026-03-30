@@ -187,10 +187,17 @@ textarea {
   padding: 7px 12px;
   font-size: 13px;
   background: #fff;
+  cursor: pointer;
 }
 
 .chip.light {
   background: rgba(255, 255, 255, 0.68);
+}
+
+.chip.selected {
+  border-color: transparent;
+  color: #fff;
+  background: linear-gradient(120deg, var(--wine), var(--amber));
 }
 
 .promo-grid {
@@ -377,6 +384,38 @@ textarea {
   text-align: center;
   padding: 12px 8px;
   font-weight: 700;
+  cursor: pointer;
+}
+
+.kpi.active {
+  border-color: transparent;
+  color: #fff;
+  background: linear-gradient(120deg, var(--wine), var(--amber));
+}
+
+.admin-list {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.admin-row {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+  padding: 10px;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+}
+
+.admin-row.selected {
+  border-color: transparent;
+  color: #fff;
+  background: linear-gradient(120deg, var(--wine), var(--amber));
 }
 
 .footer {
