@@ -3,6 +3,8 @@ package DAJ2EE.service.Auth;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import DAJ2EE.entity.User;
@@ -12,10 +14,14 @@ import java.util.Date;
 
 @Service
 public class JwtService {
-
-    // The key must be at least 256 bits (32 characters) for HS256
-    private static final String SECRET_STRING = "secret_key_daj2ee_backend_springboot_must_be_at_least_32_bytes";
-    private final SecretKey key = Keys.hmacShaKeyFor(SECRET_STRING.getBytes());
+    @Value("${jwt.secret}")
+    private String sercet;
+    @Value("${jwt.expiration")
+    private String expiration;
+    
+    private SecretKey getKey(){
+        return Keys.hmacShaKeyFor(sercet.getBytes());
+    }
 
     public String generateToken(User user) {
         return Jwts.builder()
@@ -23,8 +29,8 @@ public class JwtService {
                 .claim("id", user.getId())
                 .claim("role", user.getRole().name())
                 .setIssuedAt(new Date(System.currentTimeMillis()))
-                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 12)) // 12 hours expiry
-                .signWith(key, SignatureAlgorithm.HS256)
+                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 12))
+                .signWith(getKey(), SignatureAlgorithm.HS256)
                 .compact();
     }
 }

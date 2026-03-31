@@ -18,11 +18,21 @@ import javax.crypto.SecretKey;
 import java.io.IOException;
 import java.util.Collections;
 
+import org.springframework.beans.factory.annotation.Value;
+import jakarta.annotation.PostConstruct;
+
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
-    private static final String SECRET_STRING = "secret_key_daj2ee_backend_springboot_must_be_at_least_32_bytes";
-    private final SecretKey key = Keys.hmacShaKeyFor(SECRET_STRING.getBytes());
+    @Value("${jwt.secret}")
+    private String secretString;
+
+    private SecretKey key;
+
+    @PostConstruct
+    public void init() {
+        this.key = Keys.hmacShaKeyFor(secretString.getBytes());
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)

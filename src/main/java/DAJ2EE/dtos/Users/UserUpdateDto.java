@@ -1,18 +1,17 @@
-package DAJ2EE.dtos.Auth;
+package DAJ2EE.dtos.Users;
 
-
+import java.time.LocalDateTime;
 import DAJ2EE.enums.GenderEnum;
 import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
+
 @Data
 @Getter
 @Setter
-public class RegisterDto {
-    private String username;
-    private String email;
-    private String password;
+public class UserUpdateDto {
     private String fullName;
-    private GenderEnum gender;
     private String phone;
+    private GenderEnum gender;
+    private LocalDateTime updatedAt;
 }
