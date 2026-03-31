@@ -33,3 +33,6 @@ build/
 .vscode/
 ### Database ###
 src/main/resources/application.properties
+
+giaithich.md
+Phatdat.md
