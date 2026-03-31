@@ -1,27 +1,16 @@
-package DAJ2EE.entity;
+package DAJ2EE.dtos.Users;
 
 import java.time.LocalDateTime;
-import jakarta.validation.constraints.*;
 
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
-
-import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
 
 @Data
-@Entity(name = "userAddress")
-@Table(name = "userAddress")
 @Setter
 @Getter
-public class UserAddress {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    @NotNull(message = "User ID is required")
-    private Long userId;
+public class AddressCreateDto {
     @NotBlank(message = "Address is required")
     private String address;
     @NotBlank(message = "City is required")
@@ -30,8 +19,8 @@ public class UserAddress {
     private String state;
     @NotBlank(message = "Country is required")
     private String country;
-    @CreationTimestamp
+
+    private Long userId;
     private LocalDateTime createdAt;
-    @UpdateTimestamp
     private LocalDateTime updatedAt;
 }

@@ -2,7 +2,9 @@ package DAJ2EE.security;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
+
 import io.jsonwebtoken.security.Keys;
+
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -17,7 +19,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import javax.crypto.SecretKey;
 import java.io.IOException;
 import java.util.Collections;
-
+import DAJ2EE.security.CustomUserPrincipal;
 import org.springframework.beans.factory.annotation.Value;
 import jakarta.annotation.PostConstruct;
 
@@ -35,7 +37,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+    protected void doFilterInternal(HttpServletRequest request, 
+        HttpServletResponse response, 
+        FilterChain filterChain)
             throws ServletException, IOException {
 
         String authHeader = request.getHeader("Authorization");
@@ -56,20 +60,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
             String username = claims.getSubject();
             String role = claims.get("role", String.class);
+            Long id = claims.get("id",Long.class);
 
-            if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                // Prepend ROLE_ so Spring Security understands it as a role
+            if (username != null && id != null
+                 && SecurityContextHolder.getContext().getAuthentication() == null) {
+                
+                CustomUserPrincipal principal = new CustomUserPrincipal(id, username);
+                    
                 SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + role);
                 
                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                        username, null, Collections.singletonList(authority));
-
+                        principal, null, Collections.singletonList(authority)
+                    );
                 authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
                 SecurityContextHolder.getContext().setAuthentication(authToken);
             }
         } catch (Exception e) {
-            // Invalid token
             System.err.println("Invalid JWT Token: " + e.getMessage());
         }
 
