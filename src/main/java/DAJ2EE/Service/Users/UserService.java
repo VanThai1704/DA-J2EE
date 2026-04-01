@@ -1,11 +1,15 @@
 package DAJ2EE.service.Users;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
 import DAJ2EE.dtos.Users.AddressCreateDto;
 import DAJ2EE.dtos.Users.AddressUpdate;
+import DAJ2EE.dtos.Users.UserAddressDto;
 import DAJ2EE.dtos.Users.UserUpdateDto;
 import DAJ2EE.entity.User;
 import DAJ2EE.entity.UserAddress;
@@ -110,5 +114,38 @@ public class UserService {
         addressUpdate.setCreatedAt(savedAddress.getCreatedAt());
         addressUpdate.setUpdatedAt(savedAddress.getUpdatedAt());
         return addressUpdate;
+    }
+
+    public List<UserAddressDto> getAllAddresses(Authentication authentication) {
+        CustomUserPrincipal principal = (CustomUserPrincipal) authentication.getPrincipal();
+        Long userId = principal.getId();
+
+        List<UserAddress> addresses = userAddressRepository.findByUserId(userId);
+
+        return addresses.stream().map(address -> {
+            UserAddressDto dto = new UserAddressDto();
+            dto.setId(address.getId());
+            dto.setAddress(address.getAddress());
+            dto.setCity(address.getCity());
+            dto.setState(address.getState());
+            dto.setCountry(address.getCountry());
+            dto.setCreatedAt(address.getCreatedAt());
+            dto.setUpdatedAt(address.getUpdatedAt());
+            return dto;
+        }).collect(Collectors.toList());
+    }
+
+    public void deleteAddress(Authentication authentication, Long addressId) {
+        CustomUserPrincipal principal = (CustomUserPrincipal) authentication.getPrincipal();
+        Long userId = principal.getId();
+
+        UserAddress userAddress = userAddressRepository.findById(addressId)
+                .orElseThrow(() -> new RuntimeException("Address not found"));
+
+        if (!userAddress.getUserId().equals(userId)) {
+            throw new RuntimeException("You do not have permission to delete this address");
+        }
+
+        userAddressRepository.delete(userAddress);
     }
 }
