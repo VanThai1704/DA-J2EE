@@ -20,27 +20,45 @@ const sortOptions = ["Newest", "Price: Low to High", "Price: High to Low", "Best
 const formatVND = (amount) =>
   new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
 
+const fileToDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Không thể đọc file ảnh"));
+    reader.readAsDataURL(file);
+  });
+
+const parseResponse = async (r) => {
+  const raw = await r.text();
+  const data = raw ? JSON.parse(raw) : null;
+  if (!r.ok) {
+    const message = data?.error || data?.message || `HTTP ${r.status}`;
+    throw new Error(message);
+  }
+  return data;
+};
+
 const api = {
-  get: (url) => fetch(url).then((r) => r.json()),
+  get: (url) => fetch(url).then(parseResponse),
   post: (url, body) =>
     fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    }).then((r) => r.json()),
+    }).then(parseResponse),
   put: (url, body) =>
     fetch(url, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    }).then((r) => r.json()),
-  del: (url) => fetch(url, { method: "DELETE" }).then((r) => r.json()),
+    }).then(parseResponse),
+  del: (url) => fetch(url, { method: "DELETE" }).then(parseResponse),
   patch: (url, body) =>
     fetch(url, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    }).then((r) => r.json()),
+    }).then(parseResponse),
 };
 
 // ─── Spinner ─────────────────────────────────────────────────────────────────
@@ -67,29 +85,40 @@ function Toast({ message, type, onClose }) {
 }
 
 // ─── ProductCard ──────────────────────────────────────────────────────────────
-function ProductCard({ product, variants, onAddToCart, user, onNavigate }) {
+function ProductCard({ product, variants, onAddToCart, user, onNavigate, onViewDetail }) {
   const defaultVariant = variants && variants[0];
+  const purchasableVariant = variants?.find((v) => Number(v.stock || 0) > 0) || defaultVariant;
   const price = defaultVariant ? defaultVariant.price : null;
-  const stock = defaultVariant ? defaultVariant.stock : 0;
+  const totalStock = (variants || []).reduce((sum, v) => sum + Number(v.stock || 0), 0);
+  const inStock = totalStock > 0;
+  const [qty, setQty] = useState(1);
 
   const handleAdd = () => {
     if (!user) {
       onNavigate("account");
       return;
     }
-    if (!defaultVariant) return;
-    onAddToCart(defaultVariant.id, 1);
+    if (!purchasableVariant || !inStock) return;
+    onAddToCart(purchasableVariant.id, qty);
   };
 
   return (
     <article className="product-card">
       <div className="thumb" style={{ background: "linear-gradient(135deg, #2d2d3a, #1a1a2e)" }}>
-        {product && (
+        {product?.imageUrl ? (
+          <img
+            src={product.imageUrl}
+            alt={product.name || "Product"}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        ) : (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#a78bfa", fontSize: "2rem" }}>
             👗
           </div>
         )}
-        <div className="stock-badge" style={{ opacity: stock === 0 ? 1 : 0 }}>Hết hàng</div>
+        <div className={inStock ? "stock-badge in" : "stock-badge out"}>
+          {inStock ? "Còn hàng" : "Hết hàng"}
+        </div>
       </div>
       <div className="product-info">
         <div className="line l1" style={{ fontWeight: 600, color: "#e2e8f0", fontSize: "0.9rem" }}>
@@ -103,21 +132,49 @@ function ProductCard({ product, variants, onAddToCart, user, onNavigate }) {
             <span key={v.id} title={v.color?.name || ""} />
           ))}
         </div>
+        <div className={inStock ? "stock-inline in" : "stock-inline out"}>
+          {inStock ? `Còn ${totalStock} sản phẩm` : "Tạm hết hàng"}
+        </div>
       </div>
       <button
         type="button"
         className="btn-add-cart"
         onClick={handleAdd}
-        disabled={stock === 0}
+        disabled={!inStock}
       >
-        {stock === 0 ? "Hết hàng" : "🛒 Thêm vào giỏ"}
+        {!inStock ? "Hết hàng" : "🛒 Thêm vào giỏ"}
+      </button>
+      <div className="qty-picker">
+        <button
+          type="button"
+          onClick={() => setQty((q) => Math.max(1, q - 1))}
+          disabled={!inStock}
+        >
+          -
+        </button>
+        <span>{qty}</span>
+        <button
+          type="button"
+          onClick={() => setQty((q) => Math.min(inStock ? totalStock : 1, q + 1))}
+          disabled={!inStock}
+        >
+          +
+        </button>
+      </div>
+      <button
+        type="button"
+        className="ghost small"
+        style={{ margin: "0 .85rem .85rem" }}
+        onClick={() => onViewDetail?.(product, variants)}
+      >
+        Xem chi tiết
       </button>
     </article>
   );
 }
 
 // ─── HomePage ────────────────────────────────────────────────────────────────
-function HomePage({ products, variants, onAddToCart, user, onNavigate }) {
+function HomePage({ products, variants, onAddToCart, user, onNavigate, onViewDetail }) {
   return (
     <section className="panel">
       <article className="hero">
@@ -170,6 +227,7 @@ function HomePage({ products, variants, onAddToCart, user, onNavigate }) {
             onAddToCart={onAddToCart}
             user={user}
             onNavigate={onNavigate}
+            onViewDetail={onViewDetail}
           />
         ))}
         {products.length === 0 &&
@@ -186,15 +244,22 @@ function HomePage({ products, variants, onAddToCart, user, onNavigate }) {
 }
 
 // ─── CatalogPage ──────────────────────────────────────────────────────────────
-function CatalogPage({ products, variants, onAddToCart, user, onNavigate }) {
+function CatalogPage({ products, variants, onAddToCart, user, onNavigate, onViewDetail }) {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedSize, setSelectedSize] = useState("");
+  const [stockFilter, setStockFilter] = useState("all"); // all | in | out
 
   const filtered = products.filter((p) => {
     const matchSearch = !search || p.name?.toLowerCase().includes(search.toLowerCase());
     const matchCat = !selectedCategory || p.category?.name === selectedCategory;
-    return matchSearch && matchCat;
+    const productVariants = variants.filter((v) => v.product?.id === p.id);
+    const totalStock = productVariants.reduce((sum, v) => sum + Number(v.stock || 0), 0);
+    const matchStock =
+      stockFilter === "all" ||
+      (stockFilter === "in" && totalStock > 0) ||
+      (stockFilter === "out" && totalStock <= 0);
+    return matchSearch && matchCat && matchStock;
   });
 
   return (
@@ -213,6 +278,11 @@ function CatalogPage({ products, variants, onAddToCart, user, onNavigate }) {
         <select value={selectedSize} onChange={(e) => setSelectedSize(e.target.value)}>
           <option value="">Kích cỡ</option>
           {sizes.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={stockFilter} onChange={(e) => setStockFilter(e.target.value)}>
+          <option value="all">Tình trạng: Tất cả</option>
+          <option value="in">Còn hàng</option>
+          <option value="out">Hết hàng</option>
         </select>
       </div>
 
@@ -248,6 +318,7 @@ function CatalogPage({ products, variants, onAddToCart, user, onNavigate }) {
               onAddToCart={onAddToCart}
               user={user}
               onNavigate={onNavigate}
+              onViewDetail={onViewDetail}
             />
           ))}
           {filtered.length === 0 && (
@@ -847,6 +918,21 @@ function AccountPage({ user, onLogin, onLogout, onRegister }) {
   const [message, setMessage] = useState({ text: "", type: "" });
   const [loading, setLoading] = useState(false);
 
+  // Các tab trong khu vực tài khoản khi đã đăng nhập
+  const [activeSection, setActiveSection] = useState("profile"); // profile | orders | vouchers
+  const [orders, setOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+
+  useEffect(() => {
+    if (!user || activeSection !== "orders") return;
+    setOrdersLoading(true);
+    api
+      .get(`/api/orders/user/${user.id}`)
+      .then((data) => setOrders(Array.isArray(data) ? data : []))
+      .catch(() => setOrders([]))
+      .finally(() => setOrdersLoading(false));
+  }, [user, activeSection]);
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -896,27 +982,131 @@ function AccountPage({ user, onLogin, onLogout, onRegister }) {
   };
 
   if (user) {
+    const statusColor = {
+      PENDING: "#f59e0b",
+      PAID: "#10b981",
+      FAILED: "#ef4444",
+      CANCELLED: "#6b7280"
+    };
+
     return (
-      <section className="panel layout-2">
-        <article className="card">
-          <h3>👤 Hồ sơ của tôi</h3>
-          <div className="profile-avatar">
-            {(user.fullName || user.username || "?")[0].toUpperCase()}
+      <section className="panel account-layout">
+        <aside className="card account-sidebar">
+          <h3>Tài khoản</h3>
+          <div className="account-user">
+            <div className="profile-avatar">
+              👤
+            </div>
+            <div className="account-user-meta">
+              <div className="account-user-name">{user.fullName || user.username}</div>
+              <div className="account-user-email">{user.email}</div>
+            </div>
           </div>
-          <p style={{ textAlign: "center", fontWeight: 600, fontSize: "1.1rem", color: "#e2e8f0" }}>
-            Xin chào, {user.fullName || user.username}!
-          </p>
-          <label>Tên đăng nhập <input type="text" value={user.username} disabled /></label>
-          <label>Email        <input type="email" value={user.email} disabled /></label>
-          <label>Họ tên       <input type="text" value={user.fullName || ""} disabled /></label>
-          <label>Điện thoại   <input type="text" value={user.phone || ""} disabled /></label>
-          <button type="button" className="ghost" onClick={onLogout} style={{ marginTop: "1rem", width: "100%", color: "#ef4444", borderColor: "#ef4444" }}>
+
+          <nav className="account-nav">
+            <button
+              type="button"
+              className={activeSection === "profile" ? "account-nav-btn active" : "account-nav-btn"}
+              onClick={() => setActiveSection("profile")}
+            >
+              👤 Hồ sơ
+            </button>
+            <button
+              type="button"
+              className={activeSection === "orders" ? "account-nav-btn active" : "account-nav-btn"}
+              onClick={() => setActiveSection("orders")}
+            >
+              📦 Đơn đã mua
+            </button>
+            <button
+              type="button"
+              className={activeSection === "vouchers" ? "account-nav-btn active" : "account-nav-btn"}
+              onClick={() => setActiveSection("vouchers")}
+            >
+              🎟️ Phiếu giảm giá
+            </button>
+          </nav>
+
+          <button
+            type="button"
+            className="account-logout"
+            onClick={onLogout}
+          >
             Đăng xuất
           </button>
-        </article>
-        <article className="card">
-          <h3>📍 Địa chỉ của tôi</h3>
-          <div className="notice">Chức năng quản lý địa chỉ đang được cập nhật.</div>
+        </aside>
+
+        <article className="card account-content">
+          {activeSection === "profile" && (
+            <>
+              <h3>👤 Thông tin hồ sơ</h3>
+              <p className="account-section-desc">
+                Thông tin cơ bản của bạn dùng cho đặt hàng và liên hệ giao hàng.
+              </p>
+              <div className="account-form-grid">
+                <label>Tên đăng nhập <input type="text" value={user.username} disabled /></label>
+                <label>Email        <input type="email" value={user.email} disabled /></label>
+                <label>Họ tên       <input type="text" value={user.fullName || ""} disabled /></label>
+                <label>Điện thoại   <input type="text" value={user.phone || ""} disabled /></label>
+              </div>
+              <div className="notice">
+                Chức năng chỉnh sửa hồ sơ sẽ được bổ sung sau.
+              </div>
+            </>
+          )}
+
+          {activeSection === "orders" && (
+            <>
+              <h3>📦 Đơn hàng của tôi</h3>
+              <p className="account-section-desc">
+                Xem nhanh các đơn đã đặt và trạng thái thanh toán.
+              </p>
+              {ordersLoading && <Spinner />}
+              {!ordersLoading && orders.length === 0 && (
+                <div className="empty-cart">
+                  <div style={{ fontSize: "3rem" }}>📭</div>
+                  <p>Chưa có đơn hàng nào.</p>
+                </div>
+              )}
+              <div className="orders-list">
+                {orders.map((order) => (
+                  <div key={order.id} className="order-row">
+                    <div className="order-row-left">
+                      <strong>Đơn #{order.id}</strong>
+                      <span className="order-date">
+                        {order.createdAt
+                          ? new Date(order.createdAt).toLocaleDateString("vi-VN")
+                          : "—"}
+                      </span>
+                    </div>
+                    <div className="order-row-right">
+                      <span className="order-total">
+                        {formatVND(order.totalAmount || 0)}
+                      </span>
+                      <span
+                        className="status-badge"
+                        style={{ background: statusColor[order.status] || "#6b7280" }}
+                      >
+                        {order.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {activeSection === "vouchers" && (
+            <>
+              <h3>🎟️ Phiếu giảm giá</h3>
+              <p className="account-section-desc">
+                Nơi lưu trữ các mã giảm giá và ưu đãi dành riêng cho tài khoản của bạn.
+              </p>
+              <div className="notice">
+                Tính năng phiếu giảm giá đang được phát triển. Bạn vẫn có thể nhập mã giảm giá ở bước thanh toán khi tính năng sẵn sàng.
+              </div>
+            </>
+          )}
         </article>
       </section>
     );
@@ -983,11 +1173,11 @@ function AccountPage({ user, onLogin, onLogout, onRegister }) {
 }
 
 // ─── AdminPage ────────────────────────────────────────────────────────────────
-function AdminPage() {
+function AdminPage({ onToast }) {
   const modules = [
     { key: "products",   label: "Sản phẩm",    endpoint: "/api/admin/products" },
     { key: "categories", label: "Danh mục",     endpoint: "/api/admin/categories" },
-    { key: "variants",   label: "Biến thể",     endpoint: "/api/admin/product-variants" },
+    { key: "variants", label: "Biến thể", endpoint: "/api/admin/product-variants" },
     { key: "users",      label: "Người dùng",   endpoint: "/api/admin/users" },
     { key: "orders",     label: "Đơn hàng",     endpoint: "/api/orders" }
   ];
@@ -996,6 +1186,29 @@ function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
   const [selectedId, setSelectedId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    name: "",
+    description: "",
+    active: true,
+    categoryId: "",
+    imageUrl: ""
+  });
+  const [variantForm, setVariantForm] = useState({
+    productId: "",
+    colorId: "",
+    sizeId: "",
+    name: "",
+    price: "",
+    stock: 0,
+    sku: ""
+  });
+  const [categoryOptions, setCategoryOptions] = useState([]);
+  const [productOptions, setProductOptions] = useState([]);
+  const [colorOptions, setColorOptions] = useState([]);
+  const [sizeOptions, setSizeOptions] = useState([]);
+  const [allVariants, setAllVariants] = useState([]);
+  const [stockFilter, setStockFilter] = useState("all"); // all | in | out
 
   const currentModule = modules.find((m) => m.key === activeModule);
 
@@ -1017,11 +1230,258 @@ function AdminPage() {
 
   useEffect(() => { loadItems(); }, [activeModule]);
 
+  useEffect(() => {
+    api.get("/api/admin/categories")
+      .then((data) => setCategoryOptions(Array.isArray(data) ? data : []))
+      .catch((err) => {
+        setCategoryOptions([]);
+        onToast?.("Lỗi tải danh mục: " + err.message, "error");
+      });
+  }, []);
+
+  useEffect(() => {
+    api.get("/api/admin/products")
+      .then((data) => setProductOptions(Array.isArray(data) ? data : []))
+      .catch(() => setProductOptions([]));
+    api.get("/api/admin/colors")
+      .then((data) => setColorOptions(Array.isArray(data) ? data : []))
+      .catch(() => setColorOptions([]));
+    api.get("/api/admin/sizes")
+      .then((data) => setSizeOptions(Array.isArray(data) ? data : []))
+      .catch(() => setSizeOptions([]));
+  }, []);
+
+  useEffect(() => {
+    api.get("/api/product-variants")
+      .then((data) => setAllVariants(Array.isArray(data) ? data : []))
+      .catch(() => setAllVariants([]));
+  }, []);
+
+  useEffect(() => {
+    setSelectedId(null);
+    setForm({ name: "", description: "", active: true, categoryId: "", imageUrl: "" });
+    setVariantForm({
+      productId: "",
+      colorId: "",
+      sizeId: "",
+      name: "",
+      price: "",
+      stock: 0,
+      sku: ""
+    });
+    setStockFilter("all");
+  }, [activeModule]);
+
+  const supportsCrud = activeModule === "products" || activeModule === "categories";
+  const selectedItem = items.find((i) => i.id === selectedId) || null;
+  const isProductModule = activeModule === "products";
+  const isUsersModule = activeModule === "users";
+  const isOrdersModule = activeModule === "orders";
+  const isVariantModule = activeModule === "variants";
+
+  const stockByProductId = allVariants.reduce((acc, variant) => {
+    const pid = variant.product?.id;
+    if (!pid) return acc;
+    acc[pid] = (acc[pid] || 0) + Number(variant.stock || 0);
+    return acc;
+  }, {});
+
+  const filteredItems = isProductModule
+    ? items.filter((item) => {
+        const stock = stockByProductId[item.id] || 0;
+        if (stockFilter === "in") return stock > 0;
+        if (stockFilter === "out") return stock <= 0;
+        return true;
+      })
+    : items;
+
+  const uiColorOptions = colors
+    .map((name) => colorOptions.find((c) => c.name?.toLowerCase() === name.toLowerCase()))
+    .filter(Boolean);
+  const uiSizeOptions = sizes
+    .map((name) => sizeOptions.find((s) => s.name?.toLowerCase() === name.toLowerCase()))
+    .filter(Boolean);
+
+  useEffect(() => {
+    if (isVariantModule) {
+      if (!selectedItem) {
+        setVariantForm({
+          productId: "",
+          colorId: "",
+          sizeId: "",
+          name: "",
+          price: "",
+          stock: 0,
+          sku: ""
+        });
+        return;
+      }
+      setVariantForm({
+        productId: selectedItem.product?.id ? String(selectedItem.product.id) : "",
+        colorId: selectedItem.color?.id ? String(selectedItem.color.id) : "",
+        sizeId: selectedItem.size?.id ? String(selectedItem.size.id) : "",
+        name: selectedItem.name || "",
+        price: selectedItem.price != null ? String(selectedItem.price) : "",
+        stock: Number(selectedItem.stock || 0),
+        sku: selectedItem.sku || ""
+      });
+      return;
+    }
+    if (!supportsCrud) return;
+    if (!selectedItem) {
+      setForm({ name: "", description: "", active: true, categoryId: "", imageUrl: "" });
+      return;
+    }
+    setForm({
+      name: selectedItem.name || "",
+      description: selectedItem.description || "",
+      active: selectedItem.active !== false,
+      categoryId: selectedItem.category?.id ? String(selectedItem.category.id) : "",
+      imageUrl: selectedItem.imageUrl || ""
+    });
+  }, [selectedItem, supportsCrud, isVariantModule]);
+
+  const resetForm = () => {
+    setSelectedId(null);
+    setForm({ name: "", description: "", active: true, categoryId: "", imageUrl: "" });
+    setVariantForm({
+      productId: "",
+      colorId: "",
+      sizeId: "",
+      name: "",
+      price: "",
+      stock: 0,
+      sku: ""
+    });
+  };
+
+  const handleImageFile = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      onToast?.("Vui lòng chọn file ảnh hợp lệ", "error");
+      return;
+    }
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      setForm((prev) => ({ ...prev, imageUrl: dataUrl }));
+      onToast?.("Đã tải ảnh từ máy", "success");
+    } catch (err) {
+      onToast?.("Lỗi đọc ảnh: " + err.message, "error");
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    if (isVariantModule) {
+      if (!variantForm.productId || !variantForm.colorId || !variantForm.sizeId) {
+        onToast?.("Vui lòng chọn sản phẩm, màu và size", "error");
+        return;
+      }
+      if (!variantForm.name.trim() || !variantForm.sku.trim()) {
+        onToast?.("Vui lòng nhập tên biến thể và SKU", "error");
+        return;
+      }
+      const price = Number(variantForm.price);
+      const stock = Number(variantForm.stock);
+      if (!Number.isFinite(price) || price <= 0) {
+        onToast?.("Giá phải lớn hơn 0", "error");
+        return;
+      }
+      if (!Number.isFinite(stock) || stock < 0) {
+        onToast?.("Số lượng tồn kho không hợp lệ", "error");
+        return;
+      }
+      const payload = {
+        product: { id: Number(variantForm.productId) },
+        color: { id: Number(variantForm.colorId) },
+        size: { id: Number(variantForm.sizeId) },
+        name: variantForm.name.trim(),
+        price,
+        stock,
+        sku: variantForm.sku.trim()
+      };
+      setSaving(true);
+      try {
+        if (selectedId) {
+          await api.put(`${currentModule.endpoint}/${selectedId}`, payload);
+          onToast?.(`Đã cập nhật biến thể #${selectedId}`, "success");
+        } else {
+          await api.post(currentModule.endpoint, payload);
+          onToast?.("Đã tạo biến thể mới", "success");
+        }
+        await loadItems();
+        resetForm();
+      } catch (err) {
+        onToast?.("Lỗi lưu biến thể: " + err.message, "error");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    if (!supportsCrud) return;
+    if (!form.name.trim()) {
+      onToast?.("Vui lòng nhập tên", "error");
+      return;
+    }
+
+    if (activeModule === "products" && !form.categoryId) {
+      onToast?.("Vui lòng chọn danh mục cho sản phẩm", "error");
+      return;
+    }
+
+    const payload =
+      activeModule === "products"
+        ? {
+            name: form.name.trim(),
+            description: form.description.trim(),
+            imageUrl: form.imageUrl.trim(),
+            category: { id: Number(form.categoryId) }
+          }
+        : { name: form.name.trim() };
+
+    setSaving(true);
+    try {
+      if (selectedId) {
+        await api.put(`${currentModule.endpoint}/${selectedId}`, payload);
+        onToast?.(`Đã cập nhật ${currentModule.label.toLowerCase()} #${selectedId}`, "success");
+      } else {
+        await api.post(currentModule.endpoint, payload);
+        onToast?.(`Đã tạo mới ${currentModule.label.toLowerCase()}`, "success");
+      }
+      await loadItems();
+      resetForm();
+    } catch (err) {
+      onToast?.("Lỗi lưu dữ liệu: " + err.message, "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if ((!supportsCrud && !isVariantModule) || !selectedId) return;
+    if (!window.confirm(`Xóa mục #${selectedId}?`)) return;
+    setSaving(true);
+    try {
+      await api.del(`${currentModule.endpoint}/${selectedId}`);
+      onToast?.(`Đã xóa mục #${selectedId}`, "success");
+      await loadItems();
+      resetForm();
+    } catch (err) {
+      onToast?.("Lỗi xóa dữ liệu: " + err.message, "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
-    <section className="panel layout-2">
+    <section className="panel layout-2 admin-page">
       <article className="card">
         <h3>⚙️ Quản trị</h3>
-        <div className="kpi-grid">
+        <div className="admin-module-nav">
           {modules.map((m) => (
             <button
               key={m.key}
@@ -1033,13 +1493,38 @@ function AdminPage() {
             </button>
           ))}
         </div>
+        {isProductModule && (
+          <div className="admin-stock-filter">
+            <button
+              type="button"
+              className={stockFilter === "all" ? "chip light selected" : "chip light"}
+              onClick={() => setStockFilter("all")}
+            >
+              Tất cả
+            </button>
+            <button
+              type="button"
+              className={stockFilter === "in" ? "chip light selected" : "chip light"}
+              onClick={() => setStockFilter("in")}
+            >
+              Còn hàng
+            </button>
+            <button
+              type="button"
+              className={stockFilter === "out" ? "chip light selected" : "chip light"}
+              onClick={() => setStockFilter("out")}
+            >
+              Hết hàng
+            </button>
+          </div>
+        )}
         <div className="notice">
           Module: <strong>{currentModule?.label}</strong>.
-          {loading ? " Đang tải..." : ` Tổng ${items.length} mục.`}
+          {loading ? " Đang tải..." : ` Tổng ${filteredItems.length} mục.`}
         </div>
         {actionMessage && <div className="notice error">{actionMessage}</div>}
         <div className="admin-list">
-          {items.map((item) => (
+          {filteredItems.map((item) => (
             <button
               key={item.id}
               type="button"
@@ -1048,23 +1533,283 @@ function AdminPage() {
             >
               <strong>#{item.id}</strong>
               <span>{item.name || item.username || item.email || item.status || "(no title)"}</span>
+              {isVariantModule && <span>SKU: {item.sku || "—"}</span>}
+              {isVariantModule && <span className="stock-tag in">Kho: {item.stock ?? 0}</span>}
+              {isProductModule && (
+                <span className={(stockByProductId[item.id] || 0) > 0 ? "stock-tag in" : "stock-tag out"}>
+                  {(stockByProductId[item.id] || 0) > 0 ? "Còn hàng" : "Hết hàng"}
+                </span>
+              )}
               {item.totalAmount && <span>{formatVND(item.totalAmount)}</span>}
             </button>
           ))}
-          {items.length === 0 && !loading && <p className="notice">Không có dữ liệu.</p>}
+          {filteredItems.length === 0 && !loading && <p className="notice">Không có dữ liệu.</p>}
         </div>
       </article>
       <article className="card">
-        <h3>📊 Thống kê nhanh</h3>
-        <div className="notice">
-          Tổng đơn hàng: <strong>{activeModule === "orders" ? items.length : "—"}</strong>
-        </div>
-        <div className="notice">
-          Đã thanh toán: <strong>{activeModule === "orders" ? items.filter((i) => i.status === "PAID").length : "—"}</strong>
-        </div>
-        <div className="notice">
-          Đang chờ: <strong>{activeModule === "orders" ? items.filter((i) => i.status === "PENDING").length : "—"}</strong>
-        </div>
+        {isVariantModule ? (
+          <>
+            <h3>{selectedId ? "✏️ Chỉnh sửa biến thể" : "➕ Tạo biến thể"}</h3>
+            <form className="admin-form" onSubmit={handleSave}>
+              <label>
+                Sản phẩm *
+                <select
+                  value={variantForm.productId}
+                  onChange={(e) => setVariantForm((p) => ({ ...p, productId: e.target.value }))}
+                  required
+                >
+                  <option value="">Chọn sản phẩm</option>
+                  {productOptions.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="admin-form-grid">
+                <label>
+                  Màu *
+                  <select
+                    value={variantForm.colorId}
+                    onChange={(e) => setVariantForm((p) => ({ ...p, colorId: e.target.value }))}
+                    required
+                  >
+                    <option value="">Chọn màu</option>
+                    {uiColorOptions.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Size *
+                  <select
+                    value={variantForm.sizeId}
+                    onChange={(e) => setVariantForm((p) => ({ ...p, sizeId: e.target.value }))}
+                    required
+                  >
+                    <option value="">Chọn size</option>
+                    {uiSizeOptions.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {(uiColorOptions.length === 0 || uiSizeOptions.length === 0) && (
+                <div className="notice info">
+                  Màu/size trong DB chưa khớp bộ hiển thị (Black, Ivory, Stone, Denim, Olive / XS, S, M, L, XL).
+                </div>
+              )}
+              <div className="admin-form-grid">
+                <label>
+                  Tên biến thể *
+                  <input
+                    type="text"
+                    value={variantForm.name}
+                    onChange={(e) => setVariantForm((p) => ({ ...p, name: e.target.value }))}
+                    placeholder="Ví dụ: Đen - Size M"
+                    required
+                  />
+                </label>
+                <label>
+                  SKU *
+                  <input
+                    type="text"
+                    value={variantForm.sku}
+                    onChange={(e) => setVariantForm((p) => ({ ...p, sku: e.target.value }))}
+                    placeholder="SKU duy nhất"
+                    required
+                  />
+                </label>
+              </div>
+              <div className="admin-form-grid">
+                <label>
+                  Giá *
+                  <input
+                    type="number"
+                    min="1"
+                    step="1000"
+                    value={variantForm.price}
+                    onChange={(e) => setVariantForm((p) => ({ ...p, price: e.target.value }))}
+                    required
+                  />
+                </label>
+                <label>
+                  Số lượng tồn kho *
+                  <input
+                    type="number"
+                    min="0"
+                    value={variantForm.stock}
+                    onChange={(e) => setVariantForm((p) => ({ ...p, stock: e.target.value }))}
+                    required
+                  />
+                </label>
+              </div>
+              <div className="admin-form-actions">
+                <button type="submit" className="btn-main" disabled={saving}>
+                  {saving ? "Đang lưu..." : selectedId ? "Cập nhật biến thể" : "Tạo biến thể"}
+                </button>
+                <button type="button" className="ghost" onClick={resetForm} disabled={saving}>
+                  Làm mới form
+                </button>
+                <button
+                  type="button"
+                  className="ghost admin-delete-btn"
+                  onClick={handleDelete}
+                  disabled={!selectedId || saving}
+                >
+                  Xóa
+                </button>
+              </div>
+            </form>
+          </>
+        ) : supportsCrud ? (
+          <>
+            <h3>{selectedId ? "✏️ Chỉnh sửa mục" : "➕ Tạo mới"}</h3>
+            <form className="admin-form" onSubmit={handleSave}>
+              <label>
+                Tên *
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="Nhập tên"
+                  required
+                />
+              </label>
+              <label>
+                Mô tả
+                <textarea
+                  rows="4"
+                  value={form.description}
+                  onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+                  placeholder="Nhập mô tả"
+                />
+              </label>
+              {activeModule === "products" && (
+                <label>
+                  Danh mục *
+                  <select
+                    value={form.categoryId}
+                    onChange={(e) => setForm((prev) => ({ ...prev, categoryId: e.target.value }))}
+                    required
+                  >
+                    <option value="">Chọn danh mục</option>
+                    {categoryOptions.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {activeModule === "products" && (
+                <label>
+                  Ảnh sản phẩm (imageUrl)
+                  <input
+                    type="text"
+                    value={form.imageUrl}
+                    onChange={(e) => setForm((prev) => ({ ...prev, imageUrl: e.target.value }))}
+                    placeholder="Dán URL ảnh (ví dụ: https://placehold.co/600x400/png?text=Product)"
+                  />
+                </label>
+              )}
+              {activeModule === "products" && (
+                <label>
+                  Tải ảnh từ máy
+                  <input type="file" accept="image/*" onChange={handleImageFile} />
+                </label>
+              )}
+              {activeModule === "products" && (
+                <button
+                  type="button"
+                  className="ghost small"
+                  onClick={() =>
+                    setForm((prev) => ({
+                      ...prev,
+                      imageUrl: "https://placehold.co/600x400/png?text=Product"
+                    }))
+                  }
+                >
+                  Dùng ảnh mẫu
+                </button>
+              )}
+              {activeModule === "products" && form.imageUrl && (
+                <div className="notice">
+                  <div style={{ marginBottom: ".4rem" }}>Xem trước ảnh:</div>
+                  <img
+                    src={form.imageUrl}
+                    alt="Preview"
+                    style={{ width: "100%", maxHeight: "180px", objectFit: "cover", borderRadius: "8px" }}
+                  />
+                </div>
+              )}
+              {activeModule === "products" && categoryOptions.length === 0 && (
+                <div className="notice info">
+                  Chưa có danh mục để chọn. Hãy vào tab <strong>Danh mục</strong> và tạo trước.
+                </div>
+              )}
+              <label className="admin-checkbox">
+                <input
+                  type="checkbox"
+                  checked={form.active}
+                  onChange={(e) => setForm((prev) => ({ ...prev, active: e.target.checked }))}
+                />
+                <span>Đang hoạt động</span>
+              </label>
+
+              <div className="admin-form-actions">
+                <button type="submit" className="btn-main" disabled={saving}>
+                  {saving ? "Đang lưu..." : selectedId ? "Cập nhật" : "Tạo mới"}
+                </button>
+                <button type="button" className="ghost" onClick={resetForm} disabled={saving}>
+                  Làm mới form
+                </button>
+                <button
+                  type="button"
+                  className="ghost admin-delete-btn"
+                  onClick={handleDelete}
+                  disabled={!selectedId || saving}
+                >
+                  Xóa
+                </button>
+              </div>
+            </form>
+          </>
+        ) : isUsersModule ? (
+          <>
+            <h3>👥 Thống kê người dùng</h3>
+            <div className="notice">
+              Tổng số người dùng: <strong>{items.length}</strong>
+            </div>
+            <div className="notice">
+              Người dùng mới nhất: <strong>{items[0]?.username || items[0]?.email || "—"}</strong>
+            </div>
+          </>
+        ) : isOrdersModule ? (
+          <>
+            <h3>📊 Thống kê đơn hàng</h3>
+            <div className="notice">
+              Tổng đơn hàng: <strong>{items.length}</strong>
+            </div>
+            <div className="notice">
+              Đã thanh toán: <strong>{items.filter((i) => i.status === "PAID").length}</strong>
+            </div>
+            <div className="notice">
+              Đang chờ: <strong>{items.filter((i) => i.status === "PENDING").length}</strong>
+            </div>
+          </>
+        ) : (
+          <>
+            <h3>📊 Thống kê nhanh</h3>
+            <div className="notice">
+              Tổng số bản ghi: <strong>{items.length}</strong>
+            </div>
+            <div className="notice">
+              Module hiện tại: <strong>{currentModule?.label || "—"}</strong>
+            </div>
+            <div className="notice">
+              Module này hiện chỉ hỗ trợ xem danh sách trên giao diện.
+            </div>
+          </>
+        )}
       </article>
     </section>
   );
@@ -1104,6 +1849,41 @@ function Footer() {
   );
 }
 
+function ProductDetailModal({ detail, onClose }) {
+  if (!detail) return null;
+  const { product, variants } = detail;
+  const totalStock = (variants || []).reduce((sum, v) => sum + Number(v.stock || 0), 0);
+  const price = variants?.[0]?.price;
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <h3>{product?.name || "Chi tiết sản phẩm"}</h3>
+        <div className="notice">
+          Trạng thái:{" "}
+          <span className={totalStock > 0 ? "stock-tag in" : "stock-tag out"}>
+            {totalStock > 0 ? "Còn hàng" : "Hết hàng"}
+          </span>
+        </div>
+        <img
+          src={product?.imageUrl || "https://placehold.co/600x400/png?text=Product"}
+          alt={product?.name || "Product"}
+          style={{ width: "100%", maxHeight: "260px", objectFit: "cover", borderRadius: "10px" }}
+        />
+        <p style={{ color: "#94a3b8" }}>{product?.description || "Chưa có mô tả sản phẩm."}</p>
+        <div className="summary-list">
+          <p>Giá tham khảo <span>{price ? formatVND(price) : "—"}</span></p>
+          <p>Tổng tồn kho <span>{totalStock}</span></p>
+          <p>Số biến thể <span>{variants?.length || 0}</span></p>
+        </div>
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <button type="button" className="ghost" onClick={onClose}>Đóng</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 function App() {
   const [activePage, setActivePage] = useState(() => {
@@ -1123,12 +1903,13 @@ function App() {
   const [toast, setToast] = useState({ message: "", type: "" });
   const [products, setProducts] = useState([]);
   const [variants, setVariants] = useState([]);
+  const [detailProduct, setDetailProduct] = useState(null);
 
   useEffect(() => {
-    api.get("/api/admin/products")
+    api.get("/api/products")
       .then(data => setProducts(Array.isArray(data) ? data : []))
       .catch(() => setProducts([]));
-    api.get("/api/admin/product-variants")
+    api.get("/api/product-variants")
       .then(data => setVariants(Array.isArray(data) ? data : []))
       .catch(() => setVariants([]));
   }, []);
@@ -1176,18 +1957,19 @@ function App() {
   };
 
   const navigate = (page) => setActivePage(page);
+  const openDetail = (product, productVariants) => setDetailProduct({ product, variants: productVariants || [] });
 
   const renderPage = () => {
     switch (activePage) {
-      case "home":     return <HomePage products={products} variants={variants} onAddToCart={addToCart} user={user} onNavigate={navigate} />;
-      case "catalog":  return <CatalogPage products={products} variants={variants} onAddToCart={addToCart} user={user} onNavigate={navigate} />;
+      case "home":     return <HomePage products={products} variants={variants} onAddToCart={addToCart} user={user} onNavigate={navigate} onViewDetail={openDetail} />;
+      case "catalog":  return <CatalogPage products={products} variants={variants} onAddToCart={addToCart} user={user} onNavigate={navigate} onViewDetail={openDetail} />;
       case "cart":     return <CartPage user={user} cartCount={cartCount} setCartCount={setCartCount} onNavigate={navigate} />;
       case "checkout": return <CheckoutPage user={user} onNavigate={navigate} />;
       case "orders":   return <OrdersPage user={user} onNavigate={navigate} />;
       case "account":  return <AccountPage user={user} onLogin={handleLogin} onLogout={handleLogout} onRegister={handleLogin} />;
-      case "admin":    return <AdminPage />;
+      case "admin":    return <AdminPage onToast={showToast} />;
       case "payment-result": return <PaymentResultPage onNavigate={navigate} />;
-      default:         return <HomePage products={products} variants={variants} onAddToCart={addToCart} user={user} onNavigate={navigate} />;
+      default:         return <HomePage products={products} variants={variants} onAddToCart={addToCart} user={user} onNavigate={navigate} onViewDetail={openDetail} />;
     }
   };
 
@@ -1241,6 +2023,8 @@ function App() {
         type={toast.type}
         onClose={() => setToast({ message: "", type: "" })}
       />
+
+      <ProductDetailModal detail={detailProduct} onClose={() => setDetailProduct(null)} />
     </div>
   );
 }
