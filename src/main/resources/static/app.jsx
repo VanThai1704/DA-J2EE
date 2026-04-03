@@ -183,14 +183,23 @@ function HomePage({ products, variants, onAddToCart, user, onNavigate, onViewDet
           <h1>Thời trang hiện đại cho mọi phong cách</h1>
           <p>Khám phá bộ sưu tập mới nhất với chất lượng tốt nhất và phong cách độc đáo.</p>
           <div className="row">
-            <button className="btn-main" type="button" onClick={() => onNavigate("catalog")}>
+            <button className="btn-main" type="button" onClick={() => onNavigate("catalog")}
+            >
               Mua sắm ngay
             </button>
             <button className="ghost" type="button">Xem lookbook</button>
           </div>
         </div>
         <div className="hero-art">
-          <div className="hero-icon">👗</div>
+          <img
+            src="/panner.png"
+            alt="Fashion Hero"
+            style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "1rem" }}
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = "https://via.placeholder.com/400x400.png?text=Fashion";
+            }}
+          />
         </div>
       </article>
 
@@ -247,19 +256,29 @@ function HomePage({ products, variants, onAddToCart, user, onNavigate, onViewDet
 function CatalogPage({ products, variants, onAddToCart, user, onNavigate, onViewDetail }) {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
+  const [selectedColor, setSelectedColor] = useState("");
   const [selectedSize, setSelectedSize] = useState("");
   const [stockFilter, setStockFilter] = useState("all"); // all | in | out
 
   const filtered = products.filter((p) => {
     const matchSearch = !search || p.name?.toLowerCase().includes(search.toLowerCase());
     const matchCat = !selectedCategory || p.category?.name === selectedCategory;
+    
+    // Filter by color/size: check if product has any variant matching both filters
     const productVariants = variants.filter((v) => v.product?.id === p.id);
+    const hasMatchingVariant = productVariants.some((v) => {
+      const colorMatch = !selectedColor || v.color?.name === selectedColor;
+      const sizeMatch = !selectedSize || v.size?.name === selectedSize;
+      return colorMatch && sizeMatch;
+    });
+    
     const totalStock = productVariants.reduce((sum, v) => sum + Number(v.stock || 0), 0);
     const matchStock =
       stockFilter === "all" ||
       (stockFilter === "in" && totalStock > 0) ||
       (stockFilter === "out" && totalStock <= 0);
-    return matchSearch && matchCat && matchStock;
+    
+    return matchSearch && matchCat && hasMatchingVariant && matchStock;
   });
 
   return (
@@ -274,6 +293,10 @@ function CatalogPage({ products, variants, onAddToCart, user, onNavigate, onView
         <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)}>
           <option value="">Tất cả danh mục</option>
           {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={selectedColor} onChange={(e) => setSelectedColor(e.target.value)}>
+          <option value="">Tất cả màu</option>
+          {colors.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
         <select value={selectedSize} onChange={(e) => setSelectedSize(e.target.value)}>
           <option value="">Kích cỡ</option>
@@ -292,7 +315,14 @@ function CatalogPage({ products, variants, onAddToCart, user, onNavigate, onView
           <p>Màu sắc</p>
           <div className="chips-inline">
             {colors.map((c) => (
-              <button key={c} type="button" className="chip light">{c}</button>
+              <button 
+                key={c} 
+                type="button" 
+                className={selectedColor === c ? "chip light selected" : "chip light"}
+                onClick={() => setSelectedColor(selectedColor === c ? "" : c)}
+              >
+                {c}
+              </button>
             ))}
           </div>
           <p style={{ marginTop: "1rem" }}>Kích cỡ</p>
@@ -1192,7 +1222,13 @@ function AdminPage({ onToast }) {
     description: "",
     active: true,
     categoryId: "",
-    imageUrl: ""
+    imageUrl: "",
+    username: "",
+    email: "",
+    fullName: "",
+    phone: "",
+    password: "",
+    roleCode: "USER"
   });
   const [variantForm, setVariantForm] = useState({
     productId: "",
@@ -1272,7 +1308,7 @@ function AdminPage({ onToast }) {
     setStockFilter("all");
   }, [activeModule]);
 
-  const supportsCrud = activeModule === "products" || activeModule === "categories";
+  const supportsCrud = activeModule === "products" || activeModule === "categories" || activeModule === "users";
   const selectedItem = items.find((i) => i.id === selectedId) || null;
   const isProductModule = activeModule === "products";
   const isUsersModule = activeModule === "users";
@@ -1329,21 +1365,69 @@ function AdminPage({ onToast }) {
     }
     if (!supportsCrud) return;
     if (!selectedItem) {
-      setForm({ name: "", description: "", active: true, categoryId: "", imageUrl: "" });
+      setForm({
+        name: "",
+        description: "",
+        active: true,
+        categoryId: "",
+        imageUrl: "",
+        username: "",
+        email: "",
+        fullName: "",
+        phone: "",
+        password: "",
+        roleCode: "USER"
+      });
       return;
     }
+
+    if (isUsersModule) {
+      setForm({
+        name: "",
+        description: "",
+        active: true,
+        categoryId: "",
+        imageUrl: "",
+        username: selectedItem.username || "",
+        email: selectedItem.email || "",
+        fullName: selectedItem.fullName || "",
+        phone: selectedItem.phone || "",
+        password: "",
+        roleCode: selectedItem.role?.code || "USER"
+      });
+      return;
+    }
+
     setForm({
       name: selectedItem.name || "",
       description: selectedItem.description || "",
       active: selectedItem.active !== false,
       categoryId: selectedItem.category?.id ? String(selectedItem.category.id) : "",
-      imageUrl: selectedItem.imageUrl || ""
+      imageUrl: selectedItem.imageUrl || "",
+      username: "",
+      email: "",
+      fullName: "",
+      phone: "",
+      password: "",
+      roleCode: "USER"
     });
-  }, [selectedItem, supportsCrud, isVariantModule]);
+  }, [selectedItem, supportsCrud, isVariantModule, isUsersModule]);
 
   const resetForm = () => {
     setSelectedId(null);
-    setForm({ name: "", description: "", active: true, categoryId: "", imageUrl: "" });
+    setForm({
+      name: "",
+      description: "",
+      active: true,
+      categoryId: "",
+      imageUrl: "",
+      username: "",
+      email: "",
+      fullName: "",
+      phone: "",
+      password: "",
+      roleCode: "USER"
+    });
     setVariantForm({
       productId: "",
       colorId: "",
@@ -1423,25 +1507,49 @@ function AdminPage({ onToast }) {
     }
 
     if (!supportsCrud) return;
-    if (!form.name.trim()) {
-      onToast?.("Vui lòng nhập tên", "error");
-      return;
-    }
 
-    if (activeModule === "products" && !form.categoryId) {
-      onToast?.("Vui lòng chọn danh mục cho sản phẩm", "error");
-      return;
-    }
+    let payload;
 
-    const payload =
-      activeModule === "products"
-        ? {
-            name: form.name.trim(),
-            description: form.description.trim(),
-            imageUrl: form.imageUrl.trim(),
-            category: { id: Number(form.categoryId) }
-          }
-        : { name: form.name.trim() };
+    if (isUsersModule) {
+      if (!form.username.trim()) {
+        onToast?.("Vui lòng nhập tên đăng nhập", "error");
+        return;
+      }
+      if (!form.email.trim()) {
+        onToast?.("Vui lòng nhập email", "error");
+        return;
+      }
+      payload = {
+        username: form.username.trim(),
+        email: form.email.trim(),
+        fullName: form.fullName.trim(),
+        phone: form.phone.trim(),
+        role: { code: form.roleCode || "USER" }
+      };
+      if (form.password.trim()) {
+        payload.password = form.password.trim();
+      }
+    } else {
+      if (!form.name.trim()) {
+        onToast?.("Vui lòng nhập tên", "error");
+        return;
+      }
+
+      if (activeModule === "products" && !form.categoryId) {
+        onToast?.("Vui lòng chọn danh mục cho sản phẩm", "error");
+        return;
+      }
+
+      payload =
+        activeModule === "products"
+          ? {
+              name: form.name.trim(),
+              description: form.description.trim(),
+              imageUrl: form.imageUrl.trim(),
+              category: { id: Number(form.categoryId) }
+            }
+          : { name: form.name.trim() };
+    }
 
     setSaving(true);
     try {
@@ -1664,25 +1772,89 @@ function AdminPage({ onToast }) {
           <>
             <h3>{selectedId ? "✏️ Chỉnh sửa mục" : "➕ Tạo mới"}</h3>
             <form className="admin-form" onSubmit={handleSave}>
-              <label>
-                Tên *
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-                  placeholder="Nhập tên"
-                  required
-                />
-              </label>
-              <label>
-                Mô tả
-                <textarea
-                  rows="4"
-                  value={form.description}
-                  onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-                  placeholder="Nhập mô tả"
-                />
-              </label>
+              {isUsersModule ? (
+                <>
+                  <label>
+                    Tên đăng nhập *
+                    <input
+                      type="text"
+                      value={form.username}
+                      onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
+                      placeholder="Nhập tên đăng nhập"
+                      required
+                    />
+                  </label>
+                  <label>
+                    Email *
+                    <input
+                      type="email"
+                      value={form.email}
+                      onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+                      placeholder="Nhập email"
+                      required
+                    />
+                  </label>
+                  <label>
+                    Mật khẩu (để trống nếu không đổi)
+                    <input
+                      type="password"
+                      value={form.password}
+                      onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
+                      placeholder="Nhập mật khẩu"
+                    />
+                  </label>
+                  <label>
+                    Họ và tên
+                    <input
+                      type="text"
+                      value={form.fullName}
+                      onChange={(e) => setForm((prev) => ({ ...prev, fullName: e.target.value }))}
+                      placeholder="Nhập họ tên"
+                    />
+                  </label>
+                  <label>
+                    Số điện thoại
+                    <input
+                      type="tel"
+                      value={form.phone}
+                      onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
+                      placeholder="Nhập số điện thoại"
+                    />
+                  </label>
+                  <label>
+                    Role
+                    <select
+                      value={form.roleCode}
+                      onChange={(e) => setForm((prev) => ({ ...prev, roleCode: e.target.value }))}
+                    >
+                      <option value="USER">USER</option>
+                      <option value="ADMIN">ADMIN</option>
+                    </select>
+                  </label>
+                </>
+              ) : (
+                <>
+                  <label>
+                    Tên *
+                    <input
+                      type="text"
+                      value={form.name}
+                      onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                      placeholder="Nhập tên"
+                      required
+                    />
+                  </label>
+                  <label>
+                    Mô tả
+                    <textarea
+                      rows="4"
+                      value={form.description}
+                      onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+                      placeholder="Nhập mô tả"
+                    />
+                  </label>
+                </>
+              )}
               {activeModule === "products" && (
                 <label>
                   Danh mục *
@@ -1960,6 +2132,25 @@ function App() {
   const openDetail = (product, productVariants) => setDetailProduct({ product, variants: productVariants || [] });
 
   const renderPage = () => {
+    // Block admin access if not ADMIN role
+    if (activePage === "admin" && (!user || user.role?.code !== "ADMIN")) {
+      return (
+        <section className="panel">
+          <article className="card">
+            <div className="notice error" style={{ textAlign: "center" }}>
+              🚫 <strong>Truy cập bị từ chối</strong><br />
+              Bạn không có quyền truy cập khu vực quản trị. Chỉ quản trị viên mới có thể vào đây.
+            </div>
+            <div style={{ textAlign: "center", marginTop: "1rem" }}>
+              <button type="button" className="btn-main" onClick={() => navigate("home")}>
+                Quay lại trang chủ
+              </button>
+            </div>
+          </article>
+        </section>
+      );
+    }
+
     switch (activePage) {
       case "home":     return <HomePage products={products} variants={variants} onAddToCart={addToCart} user={user} onNavigate={navigate} onViewDetail={openDetail} />;
       case "catalog":  return <CatalogPage products={products} variants={variants} onAddToCart={addToCart} user={user} onNavigate={navigate} onViewDetail={openDetail} />;
@@ -1984,7 +2175,11 @@ function App() {
           VELA
         </div>
         <nav className="nav">
-          {pages.filter(p => p.key !== "payment-result").map((page) => (
+          {pages.filter(p => {
+            // Hide admin tab unless user is ADMIN
+            if (p.key === "admin") return user && user.role?.code === "ADMIN";
+            return p.key !== "payment-result";
+          }).map((page) => (
             <button
               key={page.key}
               type="button"

@@ -1,5 +1,6 @@
 package DAJ2EE.Service;
 
+import DAJ2EE.entity.Role;
 import DAJ2EE.entity.User;
 import DAJ2EE.repository.CartItemRepository;
 import DAJ2EE.repository.CartRepository;
@@ -18,6 +19,9 @@ public class UserService {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private RoleService roleService;
 
     @Autowired
     private CartService cartService;
@@ -50,11 +54,16 @@ public class UserService {
     public User register(User user) {
         // Validate username/email not exist
         if (userRepository.findByUsernameAndIsDeletedFalse(user.getUsername()).isPresent()) {
-            throw new RuntimeException("Username already exists");
+            throw new RuntimeException("Tên đăng nhập đã tồn tại");
         }
         if (userRepository.findByEmailAndIsDeletedFalse(user.getEmail()).isPresent()) {
-            throw new RuntimeException("Email already exists");
+            throw new RuntimeException("Email đã tồn tại");
         }
+
+        // Assign default role (USER) if exists; do not create it here
+        Role assignedRole = roleService.findByCode("USER")
+                .orElseThrow(() -> new RuntimeException("Role USER chưa được cấu hình. Vui lòng thêm role USER trước."));
+        user.setRole(assignedRole);
 
         if (user.getCreatedAt() == null) {
             user.setCreatedAt(LocalDateTime.now());
@@ -82,9 +91,38 @@ public class UserService {
 
     public User update(Long id, User userDetails) {
         User user = findById(id).orElseThrow(() -> new RuntimeException("User not found"));
-        user.setEmail(userDetails.getEmail());
-        user.setFullName(userDetails.getFullName());
-        user.setPhone(userDetails.getPhone());
+
+        if (userDetails.getUsername() != null && !userDetails.getUsername().equals(user.getUsername())) {
+            if (userRepository.findByUsernameAndIsDeletedFalse(userDetails.getUsername()).isPresent()) {
+                throw new RuntimeException("Tên đăng nhập đã tồn tại");
+            }
+            user.setUsername(userDetails.getUsername());
+        }
+
+        if (userDetails.getEmail() != null && !userDetails.getEmail().equals(user.getEmail())) {
+            if (userRepository.findByEmailAndIsDeletedFalse(userDetails.getEmail()).isPresent()) {
+                throw new RuntimeException("Email đã tồn tại");
+            }
+            user.setEmail(userDetails.getEmail());
+        }
+
+        if (userDetails.getFullName() != null) {
+            user.setFullName(userDetails.getFullName());
+        }
+
+        if (userDetails.getPhone() != null) {
+            user.setPhone(userDetails.getPhone());
+        }
+
+        if (userDetails.getPassword() != null) {
+            user.setPassword(userDetails.getPassword());
+        }
+
+        if (userDetails.getRole() != null && userDetails.getRole().getCode() != null) {
+            roleService.findByCode(userDetails.getRole().getCode())
+                    .ifPresent(user::setRole);
+        }
+
         user.setUpdatedAt(LocalDateTime.now());
         return userRepository.save(user);
     }

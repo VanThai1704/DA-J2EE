@@ -21,7 +21,7 @@ public class Product extends BaseEntity {
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    @Column(length = 500)
+    @Column(columnDefinition = "LONGTEXT")
     private String imageUrl;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
