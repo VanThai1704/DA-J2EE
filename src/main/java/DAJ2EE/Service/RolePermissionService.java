@@ -31,6 +31,10 @@ public class RolePermissionService {
         return rolePermissionRepository.findByPermissionIdAndIsDeletedFalse(permissionId);
     }
 
+    public Optional<RolePermission> findByRoleIdAndPermissionId(Long roleId, Long permissionId) {
+        return rolePermissionRepository.findByRoleIdAndPermissionIdAndIsDeletedFalse(roleId, permissionId);
+    }
+
     public RolePermission save(RolePermission rolePermission) {
         if (rolePermission.getCreatedAt() == null) {
             rolePermission.setCreatedAt(LocalDateTime.now());

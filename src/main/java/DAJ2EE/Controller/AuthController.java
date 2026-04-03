@@ -3,9 +3,11 @@ package DAJ2EE.Controller;
 import DAJ2EE.entity.User;
 import DAJ2EE.Service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.servlet.http.HttpSession;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -22,21 +24,27 @@ public class AuthController {
         try {
             User newUser = userService.register(user);
             Map<String, Object> response = new HashMap<>();
-            response.put("message", "Registration successful");
+            response.put("message", "Đăng ký thành công");
             response.put("user", newUser);
             return ResponseEntity.ok(response);
+        } catch (DataIntegrityViolationException e) {
+            String message = "Tên đăng nhập hoặc email đã tồn tại";
+            return ResponseEntity.badRequest().body(Map.of("error", message));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody Map<String, String> credentials) {
+    public ResponseEntity<?> login(@RequestBody Map<String, String> credentials, HttpSession session) {
         String username = credentials.get("username");
         String password = credentials.get("password");
 
         Optional<User> user = userService.authenticate(username, password);
         if (user.isPresent()) {
+            // Store user in session for authorization checks
+            session.setAttribute("currentUser", user.get());
+            
             Map<String, Object> response = new HashMap<>();
             response.put("message", "Login successful");
             response.put("user", user.get());
