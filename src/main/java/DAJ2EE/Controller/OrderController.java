@@ -22,6 +22,27 @@ public class OrderController {
         return orderService.findByUserId(userId);
     }
 
+    /** POST /api/orders/create — create an order (COD) */
+    @PostMapping("/create")
+    public ResponseEntity<Map<String, Object>> createOrder(@RequestBody Map<String, Object> body) {
+        try {
+            Long userId = Long.valueOf(body.get("userId").toString());
+            String receiverName    = body.getOrDefault("receiverName", "").toString();
+            String receiverPhone   = body.getOrDefault("receiverPhone", "").toString();
+            String shippingAddress = body.getOrDefault("shippingAddress", "").toString();
+            String note            = body.getOrDefault("note", "").toString();
+            String paymentMethod   = body.getOrDefault("paymentMethod", "COD").toString();
+            String couponCode      = body.getOrDefault("couponCode", "").toString();
+
+            Order order = orderService.createOrderFromCart(
+                    userId, receiverName, receiverPhone, shippingAddress, note, paymentMethod, couponCode);
+
+            return ResponseEntity.ok(Map.of("message", "Order created successfully", "orderId", order.getId()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     /** GET /api/orders/{id} — single order detail */
     @GetMapping("/{id}")
     public ResponseEntity<Order> getById(@PathVariable Long id) {

@@ -20,6 +20,12 @@ public class Order extends BaseEntity {
     @Column(nullable = false, precision = 14, scale = 2)
     private BigDecimal totalAmount;
 
+    @Column(length = 50)
+    private String couponCode;
+
+    @Column(precision = 14, scale = 2)
+    private BigDecimal discountAmount = BigDecimal.ZERO;
+
     /**
      * PENDING, PAID, FAILED, CANCELLED
      */

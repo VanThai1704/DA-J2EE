@@ -38,10 +38,11 @@ public class MomoPaymentController {
             String receiverPhone   = body.getOrDefault("receiverPhone", "").toString();
             String shippingAddress = body.getOrDefault("shippingAddress", "").toString();
             String note            = body.getOrDefault("note", "").toString();
+            String couponCode      = body.getOrDefault("couponCode", "").toString();
 
             // 1. Create order from cart
             Order order = orderService.createOrderFromCart(
-                    userId, receiverName, receiverPhone, shippingAddress, note, "MOMO");
+                    userId, receiverName, receiverPhone, shippingAddress, note, "MOMO", couponCode);
 
             // 2. Generate MoMo orderId
             String momoOrderId = "VELA-" + order.getId() + "-" + System.currentTimeMillis();
