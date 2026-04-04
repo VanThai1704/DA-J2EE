@@ -36,13 +36,6 @@ Dự án **DA-J2EE** là một ứng dụng backend **Spring Boot REST API** cun
 *   `dtos/`: Data Transfer Objects phục vụ chuyển đổi, kiểm soát luồng dữ liệu (Input/Output).
 *   `security/`: Bộ lọc `JwtAuthenticationFilter` và `CustomUserPrincipal`.
 *   `enums/`: Định nghĩa các giá trị chuẩn hoá như `RoleEnum`, `GenderEnum`.
-
-## 📚 Tài liệu tham khảo của dự án
-Dự án đi kèm các tài liệu giải thích chi tiết nguồn mã để dễ dàng bảo trì:
-*   [**Phatdat.md**](Phatdat.md): Giải thích toàn diện vòng đời (flow) của Authentication, cấu trúc Controller/Service/Entity.
-*   [**giaithich.md**](giaithich.md): Hướng dẫn chuyên sâu về cách `SecurityConfig.java` vận hành và kiểm soát request.
-*   [**giaithich-frontend-admin.md**](giaithich-frontend-admin.md): Lưu ý về các sửa đổi của Frontend Admin, logic quản lý tồn kho sản phẩm, size và màu sắc.
-
 ## 🚀 Hướng dẫn cài đặt và chạy dự án
 
 1. **Yêu cầu môi trường:** Cài đặt Java 25 và Maven. Cài đặt CSDL MySQL.
