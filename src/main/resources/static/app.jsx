@@ -2374,13 +2374,15 @@ function App() {
   const [detailProduct, setDetailProduct] = useState(null);
 
   useEffect(() => {
-    api.get("/api/products")
-      .then(data => setProducts(Array.isArray(data) ? data : []))
-      .catch(() => setProducts([]));
-    api.get("/api/product-variants")
-      .then(data => setVariants(Array.isArray(data) ? data : []))
-      .catch(() => setVariants([]));
-  }, []);
+    if (activePage === "home" || activePage === "catalog") {
+      api.get("/api/products")
+        .then(data => setProducts(Array.isArray(data) ? data : []))
+        .catch(() => setProducts([]));
+      api.get("/api/product-variants")
+        .then(data => setVariants(Array.isArray(data) ? data : []))
+        .catch(() => setVariants([]));
+    }
+  }, [activePage]);
 
   // Load cart count
   useEffect(() => {
