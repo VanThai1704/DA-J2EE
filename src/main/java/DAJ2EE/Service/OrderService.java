@@ -26,12 +26,15 @@ public class OrderService {
     @Autowired
     private CartItemRepository cartItemRepository;
 
+    @Autowired
+    private CouponRepository couponRepository;
+
     /**
      * Create a new order from the user's current cart.
      */
     @Transactional
     public Order createOrderFromCart(Long userId, String receiverName, String receiverPhone,
-                                     String shippingAddress, String note, String paymentMethod) {
+                                     String shippingAddress, String note, String paymentMethod, String couponCode) {
         Cart cart = cartRepository.findByUserIdAndIsDeletedFalse(userId)
                 .orElseThrow(() -> new RuntimeException("Cart not found for user: " + userId));
 
@@ -44,9 +47,38 @@ public class OrderService {
                 .map(CartItem::getTotalPrice)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        BigDecimal discountAmount = BigDecimal.ZERO;
+        String appliedCoupon = null;
+
+        if (couponCode != null && !couponCode.trim().isEmpty()) {
+            Optional<Coupon> optCoupon = couponRepository.findByCode(couponCode.trim());
+            if (optCoupon.isPresent()) {
+                Coupon coupon = optCoupon.get();
+                // Basic validation (assume it has been validated in frontend, but double check active/usage)
+                if (coupon.getActive() && (coupon.getUsageLimit() == null || coupon.getUsedCount() < coupon.getUsageLimit())) {
+                    if ("PERCENTAGE".equalsIgnoreCase(coupon.getDiscountType())) {
+                        discountAmount = total.multiply(coupon.getDiscountValue())
+                                .divide(BigDecimal.valueOf(100), 0, java.math.RoundingMode.HALF_UP);
+                    } else {
+                        discountAmount = coupon.getDiscountValue();
+                    }
+                    if (discountAmount.compareTo(total) > 0) {
+                        discountAmount = total;
+                    }
+                    total = total.subtract(discountAmount);
+                    appliedCoupon = coupon.getCode();
+                    
+                    coupon.setUsedCount(coupon.getUsedCount() + 1);
+                    couponRepository.save(coupon);
+                }
+            }
+        }
+
         Order order = new Order();
         order.setUser(cart.getUser());
         order.setTotalAmount(total);
+        order.setCouponCode(appliedCoupon);
+        order.setDiscountAmount(discountAmount);
         order.setStatus("PENDING");
         order.setPaymentMethod(paymentMethod != null ? paymentMethod : "MOMO");
         order.setReceiverName(receiverName);

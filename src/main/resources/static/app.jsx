@@ -4,11 +4,7 @@ const { useEffect, useState, useCallback } = React;
 const pages = [
   { key: "home", label: "🏠 Home" },
   { key: "catalog", label: "Catalog" },
-  { key: "cart", label: "🛒 Cart" },
-  { key: "checkout", label: "Checkout" },
-  { key: "orders", label: "My Orders" },
-  { key: "account", label: "Account" },
-  { key: "admin", label: "Admin" }
+  { key: "admin", label: "⚙️ Admin", adminOnly: true }
 ];
 
 const categories = ["Women", "Men", "Street", "Office", "Accessories", "Sale"];
@@ -263,7 +259,7 @@ function CatalogPage({ products, variants, onAddToCart, user, onNavigate, onView
   const filtered = products.filter((p) => {
     const matchSearch = !search || p.name?.toLowerCase().includes(search.toLowerCase());
     const matchCat = !selectedCategory || p.category?.name === selectedCategory;
-    
+
     // Filter by color/size: check if product has any variant matching both filters
     const productVariants = variants.filter((v) => v.product?.id === p.id);
     const hasMatchingVariant = productVariants.some((v) => {
@@ -271,13 +267,13 @@ function CatalogPage({ products, variants, onAddToCart, user, onNavigate, onView
       const sizeMatch = !selectedSize || v.size?.name === selectedSize;
       return colorMatch && sizeMatch;
     });
-    
+
     const totalStock = productVariants.reduce((sum, v) => sum + Number(v.stock || 0), 0);
     const matchStock =
       stockFilter === "all" ||
       (stockFilter === "in" && totalStock > 0) ||
       (stockFilter === "out" && totalStock <= 0);
-    
+
     return matchSearch && matchCat && hasMatchingVariant && matchStock;
   });
 
@@ -309,54 +305,23 @@ function CatalogPage({ products, variants, onAddToCart, user, onNavigate, onView
         </select>
       </div>
 
-      <div className="layout-2">
-        <aside className="card sidebar">
-          <h3>Bộ lọc</h3>
-          <p>Màu sắc</p>
-          <div className="chips-inline">
-            {colors.map((c) => (
-              <button 
-                key={c} 
-                type="button" 
-                className={selectedColor === c ? "chip light selected" : "chip light"}
-                onClick={() => setSelectedColor(selectedColor === c ? "" : c)}
-              >
-                {c}
-              </button>
-            ))}
+      <div className="product-grid">
+        {filtered.map((p) => (
+          <ProductCard
+            key={p.id}
+            product={p}
+            variants={variants.filter((v) => v.product?.id === p.id)}
+            onAddToCart={onAddToCart}
+            user={user}
+            onNavigate={onNavigate}
+            onViewDetail={onViewDetail}
+          />
+        ))}
+        {filtered.length === 0 && (
+          <div className="notice" style={{ gridColumn: "1/-1" }}>
+            Không tìm thấy sản phẩm nào.
           </div>
-          <p style={{ marginTop: "1rem" }}>Kích cỡ</p>
-          <div className="chips-inline">
-            {sizes.map((s) => (
-              <button
-                key={s}
-                type="button"
-                className={selectedSize === s ? "chip light selected" : "chip light"}
-                onClick={() => setSelectedSize(selectedSize === s ? "" : s)}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        </aside>
-        <div className="product-grid">
-          {filtered.map((p) => (
-            <ProductCard
-              key={p.id}
-              product={p}
-              variants={variants.filter((v) => v.product?.id === p.id)}
-              onAddToCart={onAddToCart}
-              user={user}
-              onNavigate={onNavigate}
-              onViewDetail={onViewDetail}
-            />
-          ))}
-          {filtered.length === 0 && (
-            <div className="notice" style={{ gridColumn: "1/-1" }}>
-              Không tìm thấy sản phẩm nào.
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </section>
   );
@@ -525,8 +490,12 @@ function CheckoutPage({ user, onNavigate }) {
     receiverPhone: user?.phone || "",
     shippingAddress: "",
     note: "",
-    paymentMethod: "MOMO"
+    paymentMethod: "MOMO",
+    couponCode: ""
   });
+  const [coupons, setCoupons] = useState([]);
+  const [discountData, setDiscountData] = useState(null);
+  const [showCoupons, setShowCoupons] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -535,10 +504,36 @@ function CheckoutPage({ user, onNavigate }) {
       .then(setCartData)
       .catch(() => setMessage({ text: "Lỗi tải giỏ hàng", type: "error" }))
       .finally(() => setLoading(false));
+
+    api.get("/api/coupons")
+      .then((data) => setCoupons((data || []).filter(c => c.active)))
+      .catch(() => { });
   }, [user]);
 
   const handleChange = (e) =>
     setForm({ ...form, [e.target.name]: e.target.value });
+
+  const handleApplyCoupon = async (codeToApply) => {
+    const code = typeof codeToApply === "string" ? codeToApply : form.couponCode.trim();
+    if (!code) return;
+    const items = cartData?.items || [];
+    const total = items.reduce((sum, i) => sum + Number(i.totalPrice || 0), 0);
+    try {
+      const res = await api.post("/api/coupons/validate", { code: code.toUpperCase(), orderTotal: total });
+      if (res.error) {
+        setDiscountData(null);
+        setForm({ ...form, couponCode: "" });
+        setMessage({ text: res.error, type: "error" });
+      } else {
+        setDiscountData(res);
+        setForm({ ...form, couponCode: res.code });
+        setMessage({ text: res.message, type: "success" });
+      }
+    } catch (e) {
+      setDiscountData(null);
+      setMessage({ text: "Lỗi áp dụng mã: " + e.message, type: "error" });
+    }
+  };
 
   const handlePlaceOrder = async (e) => {
     e.preventDefault();
@@ -563,7 +558,8 @@ function CheckoutPage({ user, onNavigate }) {
           receiverName: form.receiverName,
           receiverPhone: form.receiverPhone,
           shippingAddress: form.shippingAddress,
-          note: form.note
+          note: form.note,
+          couponCode: discountData?.code || ""
         });
 
         if (res.error) {
@@ -585,7 +581,8 @@ function CheckoutPage({ user, onNavigate }) {
           receiverPhone: form.receiverPhone,
           shippingAddress: form.shippingAddress,
           note: form.note,
-          paymentMethod: form.paymentMethod
+          paymentMethod: form.paymentMethod,
+          couponCode: discountData?.code || ""
         });
         if (res.error) throw new Error(res.error);
         setMessage({ text: "Đặt hàng thành công! Cảm ơn bạn.", type: "success" });
@@ -668,11 +665,41 @@ function CheckoutPage({ user, onNavigate }) {
             />
           </label>
 
+          <h3 style={{ marginTop: "1.5rem", color: "var(--text)" }}>
+            <span style={{ color: "#e83e8c", marginRight: "0.5rem" }}>🎟️</span>
+            Mã giảm giá
+          </h3>
+          <select
+            value={form.couponCode || ""}
+            onChange={(e) => {
+              const code = e.target.value;
+              if (!code) {
+                setDiscountData(null);
+                setForm({ ...form, couponCode: "" });
+                setMessage({ text: "Đã gỡ mã giảm giá", type: "info" });
+              } else {
+                handleApplyCoupon(code);
+              }
+            }}
+            style={{ marginBottom: "1.5rem" }}
+          >
+            <option value="">Chọn mã giảm giá...</option>
+            {coupons.length === 0 ? (
+              <option disabled>Hiện chưa có mã giảm giá nào</option>
+            ) : (
+              coupons.map((c) => (
+                <option key={c.id || c.code} value={c.code}>
+                  {c.code} - Giảm {c.discountType === 'PERCENTAGE' ? c.discountValue + '%' : formatVND(c.discountValue)}{c.minOrderValue > 0 ? ` (Đơn từ ${formatVND(c.minOrderValue)})` : ""}
+                </option>
+              ))
+            )}
+          </select>
+
           <h3 style={{ marginTop: "1.5rem" }}>💳 Phương thức thanh toán</h3>
           <div className="payment-methods">
             {[
               { value: "MOMO", label: "💜 MoMo", desc: "Thanh toán qua ví MoMo (sandbox)" },
-              { value: "COD",  label: "💵 COD",  desc: "Thanh toán khi nhận hàng" },
+              { value: "COD", label: "💵 COD", desc: "Thanh toán khi nhận hàng" },
             ].map((pm) => (
               <label
                 key={pm.value}
@@ -715,16 +742,19 @@ function CheckoutPage({ user, onNavigate }) {
               <div className="summary-list" style={{ marginTop: "1rem" }}>
                 <p>Tạm tính <span>{formatVND(total)}</span></p>
                 <p>Phí vận chuyển <span className="free">Miễn phí</span></p>
-                <p className="total-row">Tổng cộng <span>{formatVND(total)}</span></p>
+                {discountData && (
+                  <p>Giảm giá ({discountData.code}) <span className="free">-{formatVND(discountData.discountAmount)}</span></p>
+                )}
+                <p className="total-row">Tổng cộng <span>{formatVND(Math.max(0, total - Number(discountData?.discountAmount || 0)))}</span></p>
               </div>
 
               {form.paymentMethod === "MOMO" && (
                 <div className="momo-badge">
                   <div className="momo-logo">M</div>
                   <div>
-                    <strong>Thanh toán MoMo Sandbox</strong>
+                    <strong>Thanh toán MoMo </strong>
                     <p style={{ margin: 0, fontSize: "0.8rem", color: "#d8b4fe" }}>
-                      Bạn sẽ được chuyển đến trang MoMo test để hoàn tất thanh toán
+                      Bạn sẽ được chuyển đến trang MoMo thanh toán
                     </p>
                   </div>
                 </div>
@@ -760,10 +790,10 @@ function PaymentResultPage({ onNavigate }) {
   useEffect(() => {
     // Parse MoMo callback params from URL
     const params = new URLSearchParams(window.location.search);
-    const orderId    = params.get("orderId");
+    const orderId = params.get("orderId");
     const resultCode = params.get("resultCode");
-    const transId    = params.get("transId");
-    const message    = params.get("message");
+    const transId = params.get("transId");
+    const message = params.get("message");
 
     if (!orderId) {
       setStatus("error");
@@ -783,12 +813,12 @@ function PaymentResultPage({ onNavigate }) {
     });
   }, []);
 
-  const icons  = { loading: "⏳", success: "✅", failed: "❌", error: "⚠️" };
+  const icons = { loading: "⏳", success: "✅", failed: "❌", error: "⚠️" };
   const titles = {
     loading: "Đang xác nhận thanh toán...",
     success: "Thanh toán thành công!",
-    failed:  "Thanh toán thất bại",
-    error:   "Lỗi xác nhận"
+    failed: "Thanh toán thất bại",
+    error: "Lỗi xác nhận"
   };
 
   return (
@@ -802,9 +832,9 @@ function PaymentResultPage({ onNavigate }) {
         {detail && status !== "loading" && (
           <div className="result-detail">
             {detail.dbOrderId && <p>Mã đơn hàng: <strong>#{detail.dbOrderId}</strong></p>}
-            {detail.transId    && <p>Mã giao dịch MoMo: <strong>{detail.transId}</strong></p>}
-            {detail.message    && <p className="result-msg">{detail.message}</p>}
-            {detail.status     && <p>Trạng thái: <span className={`status-badge status-${detail.status}`}>{detail.status}</span></p>}
+            {detail.transId && <p>Mã giao dịch MoMo: <strong>{detail.transId}</strong></p>}
+            {detail.message && <p className="result-msg">{detail.message}</p>}
+            {detail.status && <p>Trạng thái: <span className={`status-badge status-${detail.status}`}>{detail.status}</span></p>}
           </div>
         )}
 
@@ -832,7 +862,7 @@ function OrdersPage({ user, onNavigate }) {
     setLoading(true);
     api.get(`/api/orders/user/${user.id}`)
       .then(setOrders)
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoading(false));
   }, [user]);
 
@@ -952,6 +982,27 @@ function AccountPage({ user, onLogin, onLogout, onRegister }) {
   const [activeSection, setActiveSection] = useState("profile"); // profile | orders | vouchers
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
+  const [coupons, setCoupons] = useState([]);
+
+  // Profile Edit
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    fullName: user?.fullName || "",
+    phone: user?.phone || "",
+    avatarUrl: user?.avatarUrl || ""
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMessage, setProfileMessage] = useState({ text: "", type: "" });
+
+  useEffect(() => {
+    if (user) {
+      setProfileForm({
+        fullName: user.fullName || "",
+        phone: user.phone || "",
+        avatarUrl: user.avatarUrl || ""
+      });
+    }
+  }, [user]);
 
   useEffect(() => {
     if (!user || activeSection !== "orders") return;
@@ -962,6 +1013,48 @@ function AccountPage({ user, onLogin, onLogout, onRegister }) {
       .catch(() => setOrders([]))
       .finally(() => setOrdersLoading(false));
   }, [user, activeSection]);
+
+  useEffect(() => {
+    if (!user || activeSection !== "vouchers") return;
+    api.get("/api/coupons")
+      .then((data) => setCoupons((data || []).filter(c => c.active)))
+      .catch(() => { });
+  }, [user, activeSection]);
+
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      setProfileForm((prev) => ({ ...prev, avatarUrl: dataUrl }));
+    } catch (err) {
+      setProfileMessage({ text: "Lỗi đọc ảnh: " + err.message, type: "error" });
+    } finally {
+      e.target.value = "";
+    }
+  };
+
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    setProfileSaving(true);
+    setProfileMessage({ text: "", type: "" });
+    try {
+      const payload = {
+        ...user,
+        fullName: profileForm.fullName,
+        phone: profileForm.phone,
+        avatarUrl: profileForm.avatarUrl
+      };
+      const res = await api.put(`/api/users/${user.id}`, payload);
+      onLogin(res);
+      setProfileMessage({ text: "Cập nhật hồ sơ thành công", type: "success" });
+      setIsEditingProfile(false);
+    } catch (err) {
+      setProfileMessage({ text: "Lỗi: " + err.message, type: "error" });
+    } finally {
+      setProfileSaving(false);
+    }
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -1024,8 +1117,10 @@ function AccountPage({ user, onLogin, onLogout, onRegister }) {
         <aside className="card account-sidebar">
           <h3>Tài khoản</h3>
           <div className="account-user">
-            <div className="profile-avatar">
-              👤
+            <div className="profile-avatar" style={{ overflow: "hidden" }}>
+              {user.avatarUrl ? (
+                <img src={user.avatarUrl} alt="Avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : "👤"}
             </div>
             <div className="account-user-meta">
               <div className="account-user-name">{user.fullName || user.username}</div>
@@ -1069,19 +1164,66 @@ function AccountPage({ user, onLogin, onLogout, onRegister }) {
         <article className="card account-content">
           {activeSection === "profile" && (
             <>
-              <h3>👤 Thông tin hồ sơ</h3>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                <h3 style={{ margin: 0 }}>👤 Thông tin hồ sơ</h3>
+                {!isEditingProfile && (
+                  <button type="button" className="ghost small" onClick={() => setIsEditingProfile(true)}>✎ Chỉnh sửa</button>
+                )}
+              </div>
               <p className="account-section-desc">
                 Thông tin cơ bản của bạn dùng cho đặt hàng và liên hệ giao hàng.
               </p>
-              <div className="account-form-grid">
-                <label>Tên đăng nhập <input type="text" value={user.username} disabled /></label>
-                <label>Email        <input type="email" value={user.email} disabled /></label>
-                <label>Họ tên       <input type="text" value={user.fullName || ""} disabled /></label>
-                <label>Điện thoại   <input type="text" value={user.phone || ""} disabled /></label>
-              </div>
-              <div className="notice">
-                Chức năng chỉnh sửa hồ sơ sẽ được bổ sung sau.
-              </div>
+
+              {profileMessage.text && (
+                <div className={`notice ${profileMessage.type}`} style={{ marginBottom: "1rem" }}>{profileMessage.text}</div>
+              )}
+
+              {isEditingProfile ? (
+                <form onSubmit={handleSaveProfile} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "1.5rem", marginBottom: "0.5rem" }}>
+                    <div className="profile-avatar" style={{ margin: 0, width: "80px", height: "80px", overflow: "hidden" }}>
+                      {profileForm.avatarUrl ? (
+                        <img src={profileForm.avatarUrl} alt="Avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      ) : "👤"}
+                    </div>
+                    <div>
+                      <label className="btn-main small" style={{ cursor: "pointer", display: "inline-block" }}>
+                        Tải ảnh lên
+                        <input
+                          type="file"
+                          accept="image/*"
+                          style={{ display: "none" }}
+                          onChange={handleAvatarUpload}
+                        />
+                      </label>
+                      <p style={{ fontSize: "0.75rem", color: "var(--muted)", marginTop: "0.5rem" }}></p>
+                    </div>
+                  </div>
+
+                  <div className="account-form-grid">
+                    <label>Tên đăng nhập <input type="text" value={user.username} disabled /></label>
+                    <label>Email        <input type="email" value={user.email} disabled /></label>
+                    <label>Họ tên       <input type="text" value={profileForm.fullName} onChange={(e) => setProfileForm({ ...profileForm, fullName: e.target.value })} required /></label>
+                    <label>Điện thoại   <input type="tel" value={profileForm.phone} onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })} required /></label>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "1rem", marginTop: "0.5rem" }}>
+                    <button type="submit" className="btn-main" disabled={profileSaving}>
+                      {profileSaving ? "Đang lưu..." : "Lưu thay đổi"}
+                    </button>
+                    <button type="button" className="ghost" onClick={() => { setIsEditingProfile(false); setProfileMessage({ text: "", type: "" }); setProfileForm({ fullName: user.fullName || "", phone: user.phone || "", avatarUrl: user.avatarUrl || "" }); }}>
+                      Hủy
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="account-form-grid">
+                  <label>Tên đăng nhập <input type="text" value={user.username} disabled /></label>
+                  <label>Email        <input type="email" value={user.email} disabled /></label>
+                  <label>Họ tên       <input type="text" value={user.fullName || ""} disabled /></label>
+                  <label>Điện thoại   <input type="text" value={user.phone || ""} disabled /></label>
+                </div>
+              )}
             </>
           )}
 
@@ -1132,8 +1274,29 @@ function AccountPage({ user, onLogin, onLogout, onRegister }) {
               <p className="account-section-desc">
                 Nơi lưu trữ các mã giảm giá và ưu đãi dành riêng cho tài khoản của bạn.
               </p>
-              <div className="notice">
-                Tính năng phiếu giảm giá đang được phát triển. Bạn vẫn có thể nhập mã giảm giá ở bước thanh toán khi tính năng sẵn sàng.
+              <div className="orders-list">
+                {coupons.length === 0 ? (
+                  <div className="empty-cart">
+                    <div style={{ fontSize: "3rem" }}>🎟️</div>
+                    <p>Hiện chưa có mã giảm giá nào khả dụng.</p>
+                  </div>
+                ) : (
+                  coupons.map((c) => (
+                    <div key={c.id || c.code} className="order-row">
+                      <div className="order-row-left">
+                        <strong style={{ color: "var(--primary)", fontSize: "1.2rem", display: "block" }}>{c.code}</strong>
+                        <div style={{ fontSize: "0.9rem", color: "var(--text-light)", marginTop: "0.2rem" }}>
+                          {c.minOrderValue > 0 ? `Áp dụng đơn từ ${formatVND(c.minOrderValue)}` : "Dành cho mọi giá trị đơn hàng"}
+                        </div>
+                      </div>
+                      <div className="order-row-right">
+                        <span className="status-badge" style={{ background: "var(--primary)" }}>
+                          Giảm {c.discountType === 'PERCENTAGE' ? c.discountValue + '%' : formatVND(c.discountValue)}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </>
           )}
@@ -1205,14 +1368,24 @@ function AccountPage({ user, onLogin, onLogout, onRegister }) {
 // ─── AdminPage ────────────────────────────────────────────────────────────────
 function AdminPage({ onToast }) {
   const modules = [
-    { key: "products",   label: "Sản phẩm",    endpoint: "/api/admin/products" },
-    { key: "categories", label: "Danh mục",     endpoint: "/api/admin/categories" },
+    { key: "products", label: "Sản phẩm", endpoint: "/api/admin/products" },
+    { key: "categories", label: "Danh mục", endpoint: "/api/admin/categories" },
     { key: "variants", label: "Biến thể", endpoint: "/api/admin/product-variants" },
-    { key: "users",      label: "Người dùng",   endpoint: "/api/admin/users" },
-    { key: "orders",     label: "Đơn hàng",     endpoint: "/api/orders" }
+    { key: "users", label: "Người dùng", endpoint: "/api/admin/users" },
+    { key: "orders", label: "Đơn hàng", endpoint: "/api/orders" },
+    { key: "coupons", label: "Mã giảm giá", endpoint: "/api/coupons" }
   ];
   const [activeModule, setActiveModule] = useState("products");
   const [items, setItems] = useState([]);
+  const [couponForm, setCouponForm] = useState({
+    code: "",
+    discountType: "FIXED",
+    discountValue: "",
+    minOrderValue: "",
+    usageLimit: "",
+    expiryDate: "",
+    active: true
+  });
   const [loading, setLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
   const [selectedId, setSelectedId] = useState(null);
@@ -1305,6 +1478,15 @@ function AdminPage({ onToast }) {
       stock: 0,
       sku: ""
     });
+    setCouponForm({
+      code: "",
+      discountType: "FIXED",
+      discountValue: "",
+      minOrderValue: "",
+      usageLimit: "",
+      expiryDate: "",
+      active: true
+    });
     setStockFilter("all");
   }, [activeModule]);
 
@@ -1314,6 +1496,7 @@ function AdminPage({ onToast }) {
   const isUsersModule = activeModule === "users";
   const isOrdersModule = activeModule === "orders";
   const isVariantModule = activeModule === "variants";
+  const isCouponModule = activeModule === "coupons";
 
   const stockByProductId = allVariants.reduce((acc, variant) => {
     const pid = variant.product?.id;
@@ -1324,11 +1507,11 @@ function AdminPage({ onToast }) {
 
   const filteredItems = isProductModule
     ? items.filter((item) => {
-        const stock = stockByProductId[item.id] || 0;
-        if (stockFilter === "in") return stock > 0;
-        if (stockFilter === "out") return stock <= 0;
-        return true;
-      })
+      const stock = stockByProductId[item.id] || 0;
+      if (stockFilter === "in") return stock > 0;
+      if (stockFilter === "out") return stock <= 0;
+      return true;
+    })
     : items;
 
   const uiColorOptions = colors
@@ -1339,6 +1522,30 @@ function AdminPage({ onToast }) {
     .filter(Boolean);
 
   useEffect(() => {
+    if (isCouponModule) {
+      if (!selectedItem) {
+        setCouponForm({
+          code: "",
+          discountType: "FIXED",
+          discountValue: "",
+          minOrderValue: "",
+          usageLimit: "",
+          expiryDate: "",
+          active: true
+        });
+        return;
+      }
+      setCouponForm({
+        code: selectedItem.code || "",
+        discountType: selectedItem.discountType || "FIXED",
+        discountValue: selectedItem.discountValue != null ? String(selectedItem.discountValue) : "",
+        minOrderValue: selectedItem.minOrderValue != null ? String(selectedItem.minOrderValue) : "",
+        usageLimit: selectedItem.usageLimit != null ? String(selectedItem.usageLimit) : "",
+        expiryDate: selectedItem.expiryDate ? selectedItem.expiryDate.substring(0, 16) : "",
+        active: selectedItem.active !== false
+      });
+      return;
+    }
     if (isVariantModule) {
       if (!selectedItem) {
         setVariantForm({
@@ -1459,6 +1666,38 @@ function AdminPage({ onToast }) {
 
   const handleSave = async (e) => {
     e.preventDefault();
+    if (isCouponModule) {
+      if (!couponForm.code.trim() || !couponForm.discountValue) {
+        onToast?.("Vui lòng nhập mã giảm giá và giá trị", "error");
+        return;
+      }
+      const payload = {
+        code: couponForm.code.trim().toUpperCase(),
+        discountType: couponForm.discountType,
+        discountValue: Number(couponForm.discountValue),
+        minOrderValue: couponForm.minOrderValue ? Number(couponForm.minOrderValue) : null,
+        usageLimit: couponForm.usageLimit ? Number(couponForm.usageLimit) : null,
+        expiryDate: couponForm.expiryDate ? couponForm.expiryDate : null,
+        active: Boolean(couponForm.active)
+      };
+      setSaving(true);
+      try {
+        if (selectedId) {
+          await api.put(`${currentModule.endpoint}/${selectedId}`, payload);
+          onToast?.(`Đã cập nhật coupon ${payload.code}`, "success");
+        } else {
+          await api.post(currentModule.endpoint, payload);
+          onToast?.("Đã tạo mới coupon", "success");
+        }
+        await loadItems();
+        resetForm();
+      } catch (err) {
+        onToast?.("Lỗi lưu coupon: " + err.message, "error");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     if (isVariantModule) {
       if (!variantForm.productId || !variantForm.colorId || !variantForm.sizeId) {
         onToast?.("Vui lòng chọn sản phẩm, màu và size", "error");
@@ -1543,11 +1782,11 @@ function AdminPage({ onToast }) {
       payload =
         activeModule === "products"
           ? {
-              name: form.name.trim(),
-              description: form.description.trim(),
-              imageUrl: form.imageUrl.trim(),
-              category: { id: Number(form.categoryId) }
-            }
+            name: form.name.trim(),
+            description: form.description.trim(),
+            imageUrl: form.imageUrl.trim(),
+            category: { id: Number(form.categoryId) }
+          }
           : { name: form.name.trim() };
     }
 
@@ -1570,7 +1809,7 @@ function AdminPage({ onToast }) {
   };
 
   const handleDelete = async () => {
-    if ((!supportsCrud && !isVariantModule) || !selectedId) return;
+    if ((!supportsCrud && !isVariantModule && !isCouponModule) || !selectedId) return;
     if (!window.confirm(`Xóa mục #${selectedId}?`)) return;
     setSaving(true);
     try {
@@ -1586,403 +1825,460 @@ function AdminPage({ onToast }) {
   };
 
   return (
-    <section className="panel layout-2 admin-page">
-      <article className="card">
-        <h3>⚙️ Quản trị</h3>
-        <div className="admin-module-nav">
+    <section className="admin-dashboard card" style={{ display: "flex", flexDirection: "row", gap: "2rem", alignItems: "flex-start", padding: "1.5rem", width: "1500px", maxWidth: "100%", minHeight: "750px", margin: "0 auto" }}>
+      <aside className="admin-sidebar" style={{ width: "220px", flexShrink: 0, position: "sticky", top: "1rem" }}>
+        <h3 style={{ marginBottom: "1.5rem", fontSize: "1.2rem" }}>⚙️ Admin Panel</h3>
+        <nav style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           {modules.map((m) => (
             <button
               key={m.key}
               type="button"
-              className={activeModule === m.key ? "kpi active" : "kpi"}
+              className={activeModule === m.key ? "btn-main small" : "ghost small"}
               onClick={() => setActiveModule(m.key)}
+              style={{ justifyContent: "flex-start", textAlign: "left", borderRadius: "8px", width: "100%", padding: "0.8rem 1rem", fontSize: "0.95rem" }}
             >
               {m.label}
             </button>
           ))}
-        </div>
-        {isProductModule && (
-          <div className="admin-stock-filter">
-            <button
-              type="button"
-              className={stockFilter === "all" ? "chip light selected" : "chip light"}
-              onClick={() => setStockFilter("all")}
-            >
-              Tất cả
-            </button>
-            <button
-              type="button"
-              className={stockFilter === "in" ? "chip light selected" : "chip light"}
-              onClick={() => setStockFilter("in")}
-            >
-              Còn hàng
-            </button>
-            <button
-              type="button"
-              className={stockFilter === "out" ? "chip light selected" : "chip light"}
-              onClick={() => setStockFilter("out")}
-            >
-              Hết hàng
-            </button>
+        </nav>
+      </aside>
+
+      <div className="admin-content" style={{ flexGrow: 1, display: "grid", gridTemplateColumns: "1fr 400px", gap: "1.5rem", minWidth: 0, alignItems: "start" }}>
+        <div style={{ background: "var(--surface2)", padding: "1.5rem", borderRadius: "var(--radius)", boxShadow: "var(--shadow)" }}>
+          <h3 style={{ marginBottom: "1rem" }}>{currentModule?.label}</h3>
+          {isProductModule && (
+            <div className="admin-stock-filter">
+              <button
+                type="button"
+                className={stockFilter === "all" ? "chip light selected" : "chip light"}
+                onClick={() => setStockFilter("all")}
+              >
+                Tất cả
+              </button>
+              <button
+                type="button"
+                className={stockFilter === "in" ? "chip light selected" : "chip light"}
+                onClick={() => setStockFilter("in")}
+              >
+                Còn hàng
+              </button>
+              <button
+                type="button"
+                className={stockFilter === "out" ? "chip light selected" : "chip light"}
+                onClick={() => setStockFilter("out")}
+              >
+                Hết hàng
+              </button>
+            </div>
+          )}
+          <div className="notice">
+            Module: <strong>{currentModule?.label}</strong>.
+            {loading ? " Đang tải..." : ` Tổng ${filteredItems.length} mục.`}
           </div>
-        )}
-        <div className="notice">
-          Module: <strong>{currentModule?.label}</strong>.
-          {loading ? " Đang tải..." : ` Tổng ${filteredItems.length} mục.`}
+          {actionMessage && <div className="notice error">{actionMessage}</div>}
+          <div className="admin-list">
+            {filteredItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={selectedId === item.id ? "admin-row selected" : "admin-row"}
+                onClick={() => setSelectedId(item.id)}
+              >
+                <strong>#{item.id}</strong>
+                <span>{item.name || item.username || item.email || item.code || item.status || "(no title)"}</span>
+                {isVariantModule && <span>SKU: {item.sku || "—"}</span>}
+                {isVariantModule && <span className="stock-tag in">Kho: {item.stock ?? 0}</span>}
+                {isProductModule && (
+                  <span className={(stockByProductId[item.id] || 0) > 0 ? "stock-tag in" : "stock-tag out"}>
+                    {(stockByProductId[item.id] || 0) > 0 ? "Còn hàng" : "Hết hàng"}
+                  </span>
+                )}
+                {item.totalAmount && <span>{formatVND(item.totalAmount)}</span>}
+              </button>
+            ))}
+            {filteredItems.length === 0 && !loading && <p className="notice">Không có dữ liệu.</p>}
+          </div>
         </div>
-        {actionMessage && <div className="notice error">{actionMessage}</div>}
-        <div className="admin-list">
-          {filteredItems.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={selectedId === item.id ? "admin-row selected" : "admin-row"}
-              onClick={() => setSelectedId(item.id)}
-            >
-              <strong>#{item.id}</strong>
-              <span>{item.name || item.username || item.email || item.status || "(no title)"}</span>
-              {isVariantModule && <span>SKU: {item.sku || "—"}</span>}
-              {isVariantModule && <span className="stock-tag in">Kho: {item.stock ?? 0}</span>}
-              {isProductModule && (
-                <span className={(stockByProductId[item.id] || 0) > 0 ? "stock-tag in" : "stock-tag out"}>
-                  {(stockByProductId[item.id] || 0) > 0 ? "Còn hàng" : "Hết hàng"}
-                </span>
-              )}
-              {item.totalAmount && <span>{formatVND(item.totalAmount)}</span>}
-            </button>
-          ))}
-          {filteredItems.length === 0 && !loading && <p className="notice">Không có dữ liệu.</p>}
-        </div>
-      </article>
-      <article className="card">
-        {isVariantModule ? (
-          <>
-            <h3>{selectedId ? "✏️ Chỉnh sửa biến thể" : "➕ Tạo biến thể"}</h3>
-            <form className="admin-form" onSubmit={handleSave}>
-              <label>
-                Sản phẩm *
-                <select
-                  value={variantForm.productId}
-                  onChange={(e) => setVariantForm((p) => ({ ...p, productId: e.target.value }))}
-                  required
-                >
-                  <option value="">Chọn sản phẩm</option>
-                  {productOptions.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </label>
-              <div className="admin-form-grid">
+        <div style={{ background: "var(--surface2)", padding: "1.5rem", borderRadius: "var(--radius)", boxShadow: "var(--shadow)" }}>
+          {isCouponModule ? (
+            <>
+              <h3>{selectedId ? "✏️ Chỉnh sửa mã giảm giá" : "➕ Tạo mã giảm giá"}</h3>
+              <form className="admin-form" onSubmit={handleSave}>
                 <label>
-                  Màu *
-                  <select
-                    value={variantForm.colorId}
-                    onChange={(e) => setVariantForm((p) => ({ ...p, colorId: e.target.value }))}
-                    required
-                  >
-                    <option value="">Chọn màu</option>
-                    {uiColorOptions.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
+                  Mã giảm giá *
+                  <input type="text" value={couponForm.code} onChange={(e) => setCouponForm(p => ({ ...p, code: e.target.value.toUpperCase() }))} placeholder="VD: SUMMER2024" required />
                 </label>
-                <label>
-                  Size *
-                  <select
-                    value={variantForm.sizeId}
-                    onChange={(e) => setVariantForm((p) => ({ ...p, sizeId: e.target.value }))}
-                    required
-                  >
-                    <option value="">Chọn size</option>
-                    {uiSizeOptions.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              {(uiColorOptions.length === 0 || uiSizeOptions.length === 0) && (
-                <div className="notice info">
-                  Màu/size trong DB chưa khớp bộ hiển thị (Black, Ivory, Stone, Denim, Olive / XS, S, M, L, XL).
-                </div>
-              )}
-              <div className="admin-form-grid">
-                <label>
-                  Tên biến thể *
-                  <input
-                    type="text"
-                    value={variantForm.name}
-                    onChange={(e) => setVariantForm((p) => ({ ...p, name: e.target.value }))}
-                    placeholder="Ví dụ: Đen - Size M"
-                    required
-                  />
-                </label>
-                <label>
-                  SKU *
-                  <input
-                    type="text"
-                    value={variantForm.sku}
-                    onChange={(e) => setVariantForm((p) => ({ ...p, sku: e.target.value }))}
-                    placeholder="SKU duy nhất"
-                    required
-                  />
-                </label>
-              </div>
-              <div className="admin-form-grid">
-                <label>
-                  Giá *
-                  <input
-                    type="number"
-                    min="1"
-                    step="1000"
-                    value={variantForm.price}
-                    onChange={(e) => setVariantForm((p) => ({ ...p, price: e.target.value }))}
-                    required
-                  />
-                </label>
-                <label>
-                  Số lượng tồn kho *
-                  <input
-                    type="number"
-                    min="0"
-                    value={variantForm.stock}
-                    onChange={(e) => setVariantForm((p) => ({ ...p, stock: e.target.value }))}
-                    required
-                  />
-                </label>
-              </div>
-              <div className="admin-form-actions">
-                <button type="submit" className="btn-main" disabled={saving}>
-                  {saving ? "Đang lưu..." : selectedId ? "Cập nhật biến thể" : "Tạo biến thể"}
-                </button>
-                <button type="button" className="ghost" onClick={resetForm} disabled={saving}>
-                  Làm mới form
-                </button>
-                <button
-                  type="button"
-                  className="ghost admin-delete-btn"
-                  onClick={handleDelete}
-                  disabled={!selectedId || saving}
-                >
-                  Xóa
-                </button>
-              </div>
-            </form>
-          </>
-        ) : supportsCrud ? (
-          <>
-            <h3>{selectedId ? "✏️ Chỉnh sửa mục" : "➕ Tạo mới"}</h3>
-            <form className="admin-form" onSubmit={handleSave}>
-              {isUsersModule ? (
-                <>
+                <div className="admin-form-grid">
                   <label>
-                    Tên đăng nhập *
-                    <input
-                      type="text"
-                      value={form.username}
-                      onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
-                      placeholder="Nhập tên đăng nhập"
-                      required
-                    />
-                  </label>
-                  <label>
-                    Email *
-                    <input
-                      type="email"
-                      value={form.email}
-                      onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
-                      placeholder="Nhập email"
-                      required
-                    />
-                  </label>
-                  <label>
-                    Mật khẩu (để trống nếu không đổi)
-                    <input
-                      type="password"
-                      value={form.password}
-                      onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
-                      placeholder="Nhập mật khẩu"
-                    />
-                  </label>
-                  <label>
-                    Họ và tên
-                    <input
-                      type="text"
-                      value={form.fullName}
-                      onChange={(e) => setForm((prev) => ({ ...prev, fullName: e.target.value }))}
-                      placeholder="Nhập họ tên"
-                    />
-                  </label>
-                  <label>
-                    Số điện thoại
-                    <input
-                      type="tel"
-                      value={form.phone}
-                      onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
-                      placeholder="Nhập số điện thoại"
-                    />
-                  </label>
-                  <label>
-                    Role
-                    <select
-                      value={form.roleCode}
-                      onChange={(e) => setForm((prev) => ({ ...prev, roleCode: e.target.value }))}
-                    >
-                      <option value="USER">USER</option>
-                      <option value="ADMIN">ADMIN</option>
+                    Loại giảm giá *
+                    <select value={couponForm.discountType} onChange={(e) => setCouponForm(p => ({ ...p, discountType: e.target.value }))}>
+                      <option value="FIXED">Giá trị cố định (VNĐ)</option>
+                      <option value="PERCENTAGE">Phần trăm (%)</option>
                     </select>
                   </label>
-                </>
-              ) : (
-                <>
                   <label>
-                    Tên *
+                    Giá trị giảm *
+                    <input type="number" min="1" value={couponForm.discountValue} onChange={(e) => setCouponForm(p => ({ ...p, discountValue: e.target.value }))} placeholder="VD: 50000 hoặc 15" required />
+                  </label>
+                </div>
+                <div className="admin-form-grid">
+                  <label>
+                    Đơn hàng tối thiểu (Tuỳ chọn)
+                    <input type="number" min="0" value={couponForm.minOrderValue} onChange={(e) => setCouponForm(p => ({ ...p, minOrderValue: e.target.value }))} placeholder="VD: 300000" />
+                  </label>
+                  <label>
+                    Giới hạn số lượt (Tuỳ chọn)
+                    <input type="number" min="1" value={couponForm.usageLimit} onChange={(e) => setCouponForm(p => ({ ...p, usageLimit: e.target.value }))} placeholder="VD: 100" />
+                  </label>
+                </div>
+                <label>
+                  Ngày hết hạn (Tuỳ chọn)
+                  <input type="datetime-local" value={couponForm.expiryDate} onChange={(e) => setCouponForm(p => ({ ...p, expiryDate: e.target.value }))} />
+                </label>
+                <div style={{ margin: "1rem 0" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexDirection: "row", cursor: "pointer" }}>
+                    <input type="checkbox" checked={couponForm.active} onChange={(e) => setCouponForm(p => ({ ...p, active: e.target.checked }))} style={{ width: "auto" }} />
+                    <span style={{ fontWeight: "bold" }}>Mã này đang hoạt động (Hiển thị cho khách hàng)</span>
+                  </label>
+                </div>
+                <div className="admin-form-actions">
+                  <button type="submit" className="btn-main" disabled={saving}>
+                    {saving ? "Đang lưu..." : selectedId ? "Cập nhật mã" : "Tạo mã mới"}
+                  </button>
+                  <button type="button" className="ghost" onClick={resetForm} disabled={saving}>Làm mới</button>
+                  <button type="button" className="ghost admin-delete-btn" onClick={handleDelete} disabled={!selectedId || saving}>Xóa</button>
+                </div>
+              </form>
+            </>
+          ) : isVariantModule ? (
+            <>
+              <h3>{selectedId ? "✏️ Chỉnh sửa biến thể" : "➕ Tạo biến thể"}</h3>
+              <form className="admin-form" onSubmit={handleSave}>
+                <label>
+                  Sản phẩm *
+                  <select
+                    value={variantForm.productId}
+                    onChange={(e) => setVariantForm((p) => ({ ...p, productId: e.target.value }))}
+                    required
+                  >
+                    <option value="">Chọn sản phẩm</option>
+                    {productOptions.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <div className="admin-form-grid">
+                  <label>
+                    Màu *
+                    <select
+                      value={variantForm.colorId}
+                      onChange={(e) => setVariantForm((p) => ({ ...p, colorId: e.target.value }))}
+                      required
+                    >
+                      <option value="">Chọn màu</option>
+                      {uiColorOptions.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Size *
+                    <select
+                      value={variantForm.sizeId}
+                      onChange={(e) => setVariantForm((p) => ({ ...p, sizeId: e.target.value }))}
+                      required
+                    >
+                      <option value="">Chọn size</option>
+                      {uiSizeOptions.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                {(uiColorOptions.length === 0 || uiSizeOptions.length === 0) && (
+                  <div className="notice info">
+                    Màu/size trong DB chưa khớp bộ hiển thị (Black, Ivory, Stone, Denim, Olive / XS, S, M, L, XL).
+                  </div>
+                )}
+                <div className="admin-form-grid">
+                  <label>
+                    Tên biến thể *
                     <input
                       type="text"
-                      value={form.name}
-                      onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-                      placeholder="Nhập tên"
+                      value={variantForm.name}
+                      onChange={(e) => setVariantForm((p) => ({ ...p, name: e.target.value }))}
+                      placeholder="Ví dụ: Đen - Size M"
                       required
                     />
                   </label>
                   <label>
-                    Mô tả
-                    <textarea
-                      rows="4"
-                      value={form.description}
-                      onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-                      placeholder="Nhập mô tả"
+                    SKU *
+                    <input
+                      type="text"
+                      value={variantForm.sku}
+                      onChange={(e) => setVariantForm((p) => ({ ...p, sku: e.target.value }))}
+                      placeholder="SKU duy nhất"
+                      required
                     />
                   </label>
-                </>
-              )}
-              {activeModule === "products" && (
-                <label>
-                  Danh mục *
-                  <select
-                    value={form.categoryId}
-                    onChange={(e) => setForm((prev) => ({ ...prev, categoryId: e.target.value }))}
-                    required
+                </div>
+                <div className="admin-form-grid">
+                  <label>
+                    Giá *
+                    <input
+                      type="number"
+                      min="1"
+                      step="1000"
+                      value={variantForm.price}
+                      onChange={(e) => setVariantForm((p) => ({ ...p, price: e.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Số lượng tồn kho *
+                    <input
+                      type="number"
+                      min="0"
+                      value={variantForm.stock}
+                      onChange={(e) => setVariantForm((p) => ({ ...p, stock: e.target.value }))}
+                      required
+                    />
+                  </label>
+                </div>
+                <div className="admin-form-actions">
+                  <button type="submit" className="btn-main" disabled={saving}>
+                    {saving ? "Đang lưu..." : selectedId ? "Cập nhật biến thể" : "Tạo biến thể"}
+                  </button>
+                  <button type="button" className="ghost" onClick={resetForm} disabled={saving}>
+                    Làm mới form
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost admin-delete-btn"
+                    onClick={handleDelete}
+                    disabled={!selectedId || saving}
                   >
-                    <option value="">Chọn danh mục</option>
-                    {categoryOptions.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              {activeModule === "products" && (
-                <label>
-                  Ảnh sản phẩm (imageUrl)
+                    Xóa
+                  </button>
+                </div>
+              </form>
+            </>
+          ) : supportsCrud ? (
+            <>
+              <h3>{selectedId ? "✏️ Chỉnh sửa mục" : "➕ Tạo mới"}</h3>
+              <form className="admin-form" onSubmit={handleSave}>
+                {isUsersModule ? (
+                  <>
+                    <label>
+                      Tên đăng nhập *
+                      <input
+                        type="text"
+                        value={form.username}
+                        onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
+                        placeholder="Nhập tên đăng nhập"
+                        required
+                      />
+                    </label>
+                    <label>
+                      Email *
+                      <input
+                        type="email"
+                        value={form.email}
+                        onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+                        placeholder="Nhập email"
+                        required
+                      />
+                    </label>
+                    <label>
+                      Mật khẩu (để trống nếu không đổi)
+                      <input
+                        type="password"
+                        value={form.password}
+                        onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
+                        placeholder="Nhập mật khẩu"
+                      />
+                    </label>
+                    <label>
+                      Họ và tên
+                      <input
+                        type="text"
+                        value={form.fullName}
+                        onChange={(e) => setForm((prev) => ({ ...prev, fullName: e.target.value }))}
+                        placeholder="Nhập họ tên"
+                      />
+                    </label>
+                    <label>
+                      Số điện thoại
+                      <input
+                        type="tel"
+                        value={form.phone}
+                        onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
+                        placeholder="Nhập số điện thoại"
+                      />
+                    </label>
+                    <label>
+                      Role
+                      <select
+                        value={form.roleCode}
+                        onChange={(e) => setForm((prev) => ({ ...prev, roleCode: e.target.value }))}
+                      >
+                        <option value="USER">USER</option>
+                        <option value="ADMIN">ADMIN</option>
+                      </select>
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <label>
+                      Tên *
+                      <input
+                        type="text"
+                        value={form.name}
+                        onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                        placeholder="Nhập tên"
+                        required
+                      />
+                    </label>
+                    <label>
+                      Mô tả
+                      <textarea
+                        rows="4"
+                        value={form.description}
+                        onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+                        placeholder="Nhập mô tả"
+                      />
+                    </label>
+                  </>
+                )}
+                {activeModule === "products" && (
+                  <label>
+                    Danh mục *
+                    <select
+                      value={form.categoryId}
+                      onChange={(e) => setForm((prev) => ({ ...prev, categoryId: e.target.value }))}
+                      required
+                    >
+                      <option value="">Chọn danh mục</option>
+                      {categoryOptions.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {activeModule === "products" && (
+                  <label>
+                    Ảnh sản phẩm (imageUrl)
+                    <input
+                      type="text"
+                      value={form.imageUrl}
+                      onChange={(e) => setForm((prev) => ({ ...prev, imageUrl: e.target.value }))}
+                      placeholder="Dán URL ảnh (ví dụ: https://placehold.co/600x400/png?text=Product)"
+                    />
+                  </label>
+                )}
+                {activeModule === "products" && (
+                  <label>
+                    Tải ảnh từ máy
+                    <input type="file" accept="image/*" onChange={handleImageFile} />
+                  </label>
+                )}
+                {activeModule === "products" && (
+                  <button
+                    type="button"
+                    className="ghost small"
+                    onClick={() =>
+                      setForm((prev) => ({
+                        ...prev,
+                        imageUrl: "https://placehold.co/600x400/png?text=Product"
+                      }))
+                    }
+                  >
+                    Dùng ảnh mẫu
+                  </button>
+                )}
+                {activeModule === "products" && form.imageUrl && (
+                  <div className="notice">
+                    <div style={{ marginBottom: ".4rem" }}>Xem trước ảnh:</div>
+                    <img
+                      src={form.imageUrl}
+                      alt="Preview"
+                      style={{ width: "100%", maxHeight: "180px", objectFit: "cover", borderRadius: "8px" }}
+                    />
+                  </div>
+                )}
+                {activeModule === "products" && categoryOptions.length === 0 && (
+                  <div className="notice info">
+                    Chưa có danh mục để chọn. Hãy vào tab <strong>Danh mục</strong> và tạo trước.
+                  </div>
+                )}
+                <label className="admin-checkbox">
                   <input
-                    type="text"
-                    value={form.imageUrl}
-                    onChange={(e) => setForm((prev) => ({ ...prev, imageUrl: e.target.value }))}
-                    placeholder="Dán URL ảnh (ví dụ: https://placehold.co/600x400/png?text=Product)"
+                    type="checkbox"
+                    checked={form.active}
+                    onChange={(e) => setForm((prev) => ({ ...prev, active: e.target.checked }))}
                   />
+                  <span>Đang hoạt động</span>
                 </label>
-              )}
-              {activeModule === "products" && (
-                <label>
-                  Tải ảnh từ máy
-                  <input type="file" accept="image/*" onChange={handleImageFile} />
-                </label>
-              )}
-              {activeModule === "products" && (
-                <button
-                  type="button"
-                  className="ghost small"
-                  onClick={() =>
-                    setForm((prev) => ({
-                      ...prev,
-                      imageUrl: "https://placehold.co/600x400/png?text=Product"
-                    }))
-                  }
-                >
-                  Dùng ảnh mẫu
-                </button>
-              )}
-              {activeModule === "products" && form.imageUrl && (
-                <div className="notice">
-                  <div style={{ marginBottom: ".4rem" }}>Xem trước ảnh:</div>
-                  <img
-                    src={form.imageUrl}
-                    alt="Preview"
-                    style={{ width: "100%", maxHeight: "180px", objectFit: "cover", borderRadius: "8px" }}
-                  />
-                </div>
-              )}
-              {activeModule === "products" && categoryOptions.length === 0 && (
-                <div className="notice info">
-                  Chưa có danh mục để chọn. Hãy vào tab <strong>Danh mục</strong> và tạo trước.
-                </div>
-              )}
-              <label className="admin-checkbox">
-                <input
-                  type="checkbox"
-                  checked={form.active}
-                  onChange={(e) => setForm((prev) => ({ ...prev, active: e.target.checked }))}
-                />
-                <span>Đang hoạt động</span>
-              </label>
 
-              <div className="admin-form-actions">
-                <button type="submit" className="btn-main" disabled={saving}>
-                  {saving ? "Đang lưu..." : selectedId ? "Cập nhật" : "Tạo mới"}
-                </button>
-                <button type="button" className="ghost" onClick={resetForm} disabled={saving}>
-                  Làm mới form
-                </button>
-                <button
-                  type="button"
-                  className="ghost admin-delete-btn"
-                  onClick={handleDelete}
-                  disabled={!selectedId || saving}
-                >
-                  Xóa
-                </button>
+                <div className="admin-form-actions">
+                  <button type="submit" className="btn-main" disabled={saving}>
+                    {saving ? "Đang lưu..." : selectedId ? "Cập nhật" : "Tạo mới"}
+                  </button>
+                  <button type="button" className="ghost" onClick={resetForm} disabled={saving}>
+                    Làm mới form
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost admin-delete-btn"
+                    onClick={handleDelete}
+                    disabled={!selectedId || saving}
+                  >
+                    Xóa
+                  </button>
+                </div>
+              </form>
+            </>
+          ) : isUsersModule ? (
+            <>
+              <h3>👥 Thống kê người dùng</h3>
+              <div className="notice">
+                Tổng số người dùng: <strong>{items.length}</strong>
               </div>
-            </form>
-          </>
-        ) : isUsersModule ? (
-          <>
-            <h3>👥 Thống kê người dùng</h3>
-            <div className="notice">
-              Tổng số người dùng: <strong>{items.length}</strong>
-            </div>
-            <div className="notice">
-              Người dùng mới nhất: <strong>{items[0]?.username || items[0]?.email || "—"}</strong>
-            </div>
-          </>
-        ) : isOrdersModule ? (
-          <>
-            <h3>📊 Thống kê đơn hàng</h3>
-            <div className="notice">
-              Tổng đơn hàng: <strong>{items.length}</strong>
-            </div>
-            <div className="notice">
-              Đã thanh toán: <strong>{items.filter((i) => i.status === "PAID").length}</strong>
-            </div>
-            <div className="notice">
-              Đang chờ: <strong>{items.filter((i) => i.status === "PENDING").length}</strong>
-            </div>
-          </>
-        ) : (
-          <>
-            <h3>📊 Thống kê nhanh</h3>
-            <div className="notice">
-              Tổng số bản ghi: <strong>{items.length}</strong>
-            </div>
-            <div className="notice">
-              Module hiện tại: <strong>{currentModule?.label || "—"}</strong>
-            </div>
-            <div className="notice">
-              Module này hiện chỉ hỗ trợ xem danh sách trên giao diện.
-            </div>
-          </>
-        )}
-      </article>
+              <div className="notice">
+                Người dùng mới nhất: <strong>{items[0]?.username || items[0]?.email || "—"}</strong>
+              </div>
+            </>
+          ) : isOrdersModule ? (
+            <>
+              <h3>📊 Thống kê đơn hàng</h3>
+              <div className="notice">
+                Tổng đơn hàng: <strong>{items.length}</strong>
+              </div>
+              <div className="notice">
+                Đã thanh toán: <strong>{items.filter((i) => i.status === "PAID").length}</strong>
+              </div>
+              <div className="notice">
+                Đang chờ: <strong>{items.filter((i) => i.status === "PENDING").length}</strong>
+              </div>
+            </>
+          ) : (
+            <>
+              <h3>📊 Thống kê nhanh</h3>
+              <div className="notice">
+                Tổng số bản ghi: <strong>{items.length}</strong>
+              </div>
+              <div className="notice">
+                Module hiện tại: <strong>{currentModule?.label || "—"}</strong>
+              </div>
+              <div className="notice">
+                Module này hiện chỉ hỗ trợ xem danh sách trên giao diện.
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
@@ -2078,13 +2374,15 @@ function App() {
   const [detailProduct, setDetailProduct] = useState(null);
 
   useEffect(() => {
-    api.get("/api/products")
-      .then(data => setProducts(Array.isArray(data) ? data : []))
-      .catch(() => setProducts([]));
-    api.get("/api/product-variants")
-      .then(data => setVariants(Array.isArray(data) ? data : []))
-      .catch(() => setVariants([]));
-  }, []);
+    if (activePage === "home" || activePage === "catalog") {
+      api.get("/api/products")
+        .then(data => setProducts(Array.isArray(data) ? data : []))
+        .catch(() => setProducts([]));
+      api.get("/api/product-variants")
+        .then(data => setVariants(Array.isArray(data) ? data : []))
+        .catch(() => setVariants([]));
+    }
+  }, [activePage]);
 
   // Load cart count
   useEffect(() => {
@@ -2152,15 +2450,15 @@ function App() {
     }
 
     switch (activePage) {
-      case "home":     return <HomePage products={products} variants={variants} onAddToCart={addToCart} user={user} onNavigate={navigate} onViewDetail={openDetail} />;
-      case "catalog":  return <CatalogPage products={products} variants={variants} onAddToCart={addToCart} user={user} onNavigate={navigate} onViewDetail={openDetail} />;
-      case "cart":     return <CartPage user={user} cartCount={cartCount} setCartCount={setCartCount} onNavigate={navigate} />;
+      case "home": return <HomePage products={products} variants={variants} onAddToCart={addToCart} user={user} onNavigate={navigate} onViewDetail={openDetail} />;
+      case "catalog": return <CatalogPage products={products} variants={variants} onAddToCart={addToCart} user={user} onNavigate={navigate} onViewDetail={openDetail} />;
+      case "cart": return <CartPage user={user} cartCount={cartCount} setCartCount={setCartCount} onNavigate={navigate} />;
       case "checkout": return <CheckoutPage user={user} onNavigate={navigate} />;
-      case "orders":   return <OrdersPage user={user} onNavigate={navigate} />;
-      case "account":  return <AccountPage user={user} onLogin={handleLogin} onLogout={handleLogout} onRegister={handleLogin} />;
-      case "admin":    return <AdminPage onToast={showToast} />;
+      case "orders": return <OrdersPage user={user} onNavigate={navigate} />;
+      case "account": return <AccountPage user={user} onLogin={handleLogin} onLogout={handleLogout} onRegister={handleLogin} />;
+      case "admin": return <AdminPage onToast={showToast} />;
       case "payment-result": return <PaymentResultPage onNavigate={navigate} />;
-      default:         return <HomePage products={products} variants={variants} onAddToCart={addToCart} user={user} onNavigate={navigate} onViewDetail={openDetail} />;
+      default: return <HomePage products={products} variants={variants} onAddToCart={addToCart} user={user} onNavigate={navigate} onViewDetail={openDetail} />;
     }
   };
 
@@ -2199,12 +2497,27 @@ function App() {
             🛒
             {cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
           </button>
+
+
+
           <button
             type="button"
-            className={user ? "btn-main small" : "ghost small"}
+            className="btn-main small"
+            style={{ backgroundColor: "#7c3aed", color: "#fff", display: "flex", alignItems: "center", gap: "0.5rem", borderRadius: "10px", padding: "0.5rem 1rem" }}
             onClick={() => navigate("account")}
           >
-            {user ? "👤 " + (user.fullName || user.username).split(" ").pop() : "Đăng nhập"}
+            {user ? (
+              <>
+                {user.avatarUrl ? (
+                  <img src={user.avatarUrl} alt="Avatar" style={{ width: "22px", height: "22px", borderRadius: "50%", objectFit: "cover", margin: "-4px 0" }} />
+                ) : (
+                  "👤"
+                )}
+                <span>{(user.fullName || user.username).split(" ").pop()}</span>
+              </>
+            ) : (
+              "👤 Đăng nhập"
+            )}
           </button>
         </div>
       </header>

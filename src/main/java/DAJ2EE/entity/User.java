@@ -30,7 +30,10 @@ public class User extends BaseEntity {
     @Column(length = 20)
     private String phone;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @Column(columnDefinition = "LONGTEXT")
+    private String avatarUrl;
+
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "role_id", nullable = true)
     private Role role;
 }
