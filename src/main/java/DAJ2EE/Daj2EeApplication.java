@@ -1,20 +1,22 @@
 package DAJ2EE;
 
-import DAJ2EE.entity.Permission;
-import DAJ2EE.entity.Role;
-import DAJ2EE.entity.RolePermission;
-import DAJ2EE.Service.PermissionService;
-import DAJ2EE.Service.RolePermissionService;
-import DAJ2EE.Service.RoleService;
+import java.sql.Connection;
+import java.sql.Statement;
+import java.util.List;
+
+import javax.sql.DataSource;
+
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
-import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.Statement;
-import java.util.List;
+import DAJ2EE.Service	.PermissionService;
+import DAJ2EE.Service.RolePermissionService;
+import DAJ2EE.Service.RoleService;
+import DAJ2EE.entity.Permission;
+import DAJ2EE.entity.Role;
+import DAJ2EE.entity.RolePermission;
 
 @SpringBootApplication
 public class Daj2EeApplication {

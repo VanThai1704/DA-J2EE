@@ -1,16 +1,22 @@
 package DAJ2EE.Controller;
 
-import DAJ2EE.entity.User;
-import DAJ2EE.Service.UserService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-import jakarta.servlet.http.HttpSession;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import DAJ2EE.Service.UserService;
+import DAJ2EE.entity.User;
+import jakarta.servlet.http.HttpSession;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -42,12 +48,19 @@ public class AuthController {
 
         Optional<User> user = userService.authenticate(username, password);
         if (user.isPresent()) {
+            User loggedInUser = user.get();
+            
+            // Force load role if lazy
+            if (loggedInUser.getRole() != null) {
+                loggedInUser.getRole().getId();
+            }
+            
             // Store user in session for authorization checks
-            session.setAttribute("currentUser", user.get());
+            session.setAttribute("currentUser", loggedInUser);
             
             Map<String, Object> response = new HashMap<>();
             response.put("message", "Login successful");
-            response.put("user", user.get());
+            response.put("user", loggedInUser);
             return ResponseEntity.ok(response);
         } else {
             return ResponseEntity.badRequest().body(Map.of("error", "Invalid username or password"));

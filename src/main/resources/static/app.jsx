@@ -8,8 +8,6 @@ const pages = [
 ];
 
 const categories = ["Women", "Men", "Street", "Office", "Accessories", "Sale"];
-const sizes = ["XS", "S", "M", "L", "XL"];
-const colors = ["Black", "Ivory", "Stone", "Denim", "Olive"];
 const sortOptions = ["Newest", "Price: Low to High", "Price: High to Low", "Best Sellers"];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -122,11 +120,6 @@ function ProductCard({ product, variants, onAddToCart, user, onNavigate, onViewD
         </div>
         <div className="line l2" style={{ color: "#a78bfa", fontSize: "0.85rem", marginTop: "0.25rem" }}>
           {price ? formatVND(price) : "—"}
-        </div>
-        <div className="swatches">
-          {variants && variants.slice(0, 3).map((v) => (
-            <span key={v.id} title={v.color?.name || ""} />
-          ))}
         </div>
         <div className={inStock ? "stock-inline in" : "stock-inline out"}>
           {inStock ? `Còn ${totalStock} sản phẩm` : "Tạm hết hàng"}
@@ -249,7 +242,7 @@ function HomePage({ products, variants, onAddToCart, user, onNavigate, onViewDet
 }
 
 // ─── CatalogPage ──────────────────────────────────────────────────────────────
-function CatalogPage({ products, variants, onAddToCart, user, onNavigate, onViewDetail }) {
+function CatalogPage({ products, variants, onAddToCart, user, onNavigate, onViewDetail, colors = [], sizes = [] }) {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedColor, setSelectedColor] = useState("");
@@ -263,8 +256,8 @@ function CatalogPage({ products, variants, onAddToCart, user, onNavigate, onView
     // Filter by color/size: check if product has any variant matching both filters
     const productVariants = variants.filter((v) => v.product?.id === p.id);
     const hasMatchingVariant = productVariants.some((v) => {
-      const colorMatch = !selectedColor || v.color?.name === selectedColor;
-      const sizeMatch = !selectedSize || v.size?.name === selectedSize;
+      const colorMatch = !selectedColor || v.color?.id === Number(selectedColor);
+      const sizeMatch = !selectedSize || v.size?.id === Number(selectedSize);
       return colorMatch && sizeMatch;
     });
 
@@ -292,11 +285,11 @@ function CatalogPage({ products, variants, onAddToCart, user, onNavigate, onView
         </select>
         <select value={selectedColor} onChange={(e) => setSelectedColor(e.target.value)}>
           <option value="">Tất cả màu</option>
-          {colors.map((c) => <option key={c} value={c}>{c}</option>)}
+          {colors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         <select value={selectedSize} onChange={(e) => setSelectedSize(e.target.value)}>
           <option value="">Kích cỡ</option>
-          {sizes.map((s) => <option key={s} value={s}>{s}</option>)}
+          {sizes.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
         <select value={stockFilter} onChange={(e) => setStockFilter(e.target.value)}>
           <option value="all">Tình trạng: Tất cả</option>
@@ -1452,10 +1445,10 @@ function AdminPage({ onToast }) {
     api.get("/api/admin/products")
       .then((data) => setProductOptions(Array.isArray(data) ? data : []))
       .catch(() => setProductOptions([]));
-    api.get("/api/admin/colors")
+    api.get("/api/colors")
       .then((data) => setColorOptions(Array.isArray(data) ? data : []))
       .catch(() => setColorOptions([]));
-    api.get("/api/admin/sizes")
+    api.get("/api/sizes")
       .then((data) => setSizeOptions(Array.isArray(data) ? data : []))
       .catch(() => setSizeOptions([]));
   }, []);
@@ -2317,35 +2310,254 @@ function Footer() {
   );
 }
 
-function ProductDetailModal({ detail, onClose }) {
+function ProductDetailModal({ detail, onClose, onAddToCart, user, onNavigate, colors = [], sizes = [] }) {
   if (!detail) return null;
-  const { product, variants } = detail;
+  const { product, variants } = detail || {};
+  
+  const [selectedColor, setSelectedColor] = useState(null);
+  const [selectedSize, setSelectedSize] = useState(null);
+  const [quantity, setQuantity] = useState(1);
+  const [adding, setAdding] = useState(false);
+
+  // Use all colors/sizes from database (passed from App)
+  const allColors = colors || [];
+  const allSizes = sizes || [];
+
+  // Find selected variant
+  const selectedVariant = variants?.find(
+    v => (!selectedColor || v.color?.id === selectedColor) &&
+         (!selectedSize || v.size?.id === selectedSize)
+  );
+
+  // Filter available sizes for selected color
+  const availableSizesForColor = selectedColor 
+    ? allSizes.filter(size => {
+        const hasVariant = variants?.some(v => 
+          v.color?.id === selectedColor && v.size?.id === size?.id && Number(v.stock || 0) > 0
+        );
+        return hasVariant;
+      })
+    : allSizes;
+
+  // Filter available colors for selected size
+  const availableColorsForSize = selectedSize
+    ? allColors.filter(color => {
+        const hasVariant = variants?.some(v => 
+          v.size?.id === selectedSize && v.color?.id === color?.id && Number(v.stock || 0) > 0
+        );
+        return hasVariant;
+      })
+    : allColors;
+
   const totalStock = (variants || []).reduce((sum, v) => sum + Number(v.stock || 0), 0);
-  const price = variants?.[0]?.price;
+  const currentStock = selectedVariant?.stock || 0;
+  const currentPrice = selectedVariant?.price || variants?.[0]?.price;
+
+  const handleAddToCart = async () => {
+    if (!selectedVariant) {
+      alert("Vui lòng chọn màu và size");
+      return;
+    }
+    setAdding(true);
+    try {
+      await onAddToCart(selectedVariant.id, quantity);
+      onClose();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setAdding(false);
+    }
+  };
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <h3>{product?.name || "Chi tiết sản phẩm"}</h3>
-        <div className="notice">
-          Trạng thái:{" "}
-          <span className={totalStock > 0 ? "stock-tag in" : "stock-tag out"}>
-            {totalStock > 0 ? "Còn hàng" : "Hết hàng"}
-          </span>
+      <div className="modal-card" style={{ maxWidth: "700px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem", maxHeight: "90vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
+        {/* Image section */}
+        <div>
+          <img
+            src={product?.imageUrl || "https://placehold.co/600x400/png?text=Product"}
+            alt={product?.name || "Product"}
+            style={{ width: "100%", height: "380px", objectFit: "cover", borderRadius: "10px", marginBottom: "1rem" }}
+          />
+          <button type="button" className="ghost small" onClick={onClose} style={{ width: "100%", textAlign: "center" }}>
+            ✕ Đóng
+          </button>
         </div>
-        <img
-          src={product?.imageUrl || "https://placehold.co/600x400/png?text=Product"}
-          alt={product?.name || "Product"}
-          style={{ width: "100%", maxHeight: "260px", objectFit: "cover", borderRadius: "10px" }}
-        />
-        <p style={{ color: "#94a3b8" }}>{product?.description || "Chưa có mô tả sản phẩm."}</p>
-        <div className="summary-list">
-          <p>Giá tham khảo <span>{price ? formatVND(price) : "—"}</span></p>
-          <p>Tổng tồn kho <span>{totalStock}</span></p>
-          <p>Số biến thể <span>{variants?.length || 0}</span></p>
-        </div>
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button type="button" className="ghost" onClick={onClose}>Đóng</button>
+
+        {/* Info section */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+          <div>
+            <h2 style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>{product?.name || "Chi tiết sản phẩm"}</h2>
+            <div className="notice" style={{ marginBottom: "1rem" }}>
+              Trạng thái:{" "}
+              <span className={totalStock > 0 ? "stock-tag in" : "stock-tag out"}>
+                {totalStock > 0 ? "Còn hàng" : "Hết hàng"}
+              </span>
+            </div>
+            <p style={{ color: "#94a3b8", fontSize: "0.95rem", lineHeight: "1.6" }}>
+              {product?.description || "Chưa có mô tả sản phẩm."}
+            </p>
+          </div>
+
+          {/* Price & Stock */}
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: "1rem" }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: "1rem", marginBottom: "0.5rem" }}>
+              <span style={{ fontSize: "1.8rem", fontWeight: "bold", color: "#10b981" }}>
+                {currentPrice ? formatVND(currentPrice) : "—"}
+              </span>
+              <span style={{ fontSize: "0.9rem", color: "var(--muted)" }}>
+                Tồn kho: <strong style={{ color: currentStock > 0 ? "#10b981" : "#ef4444" }}>{currentStock}</strong>
+              </span>
+            </div>
+          </div>
+
+          {/* Color Selection */}
+          <div>
+            <h4 style={{ marginBottom: "0.8rem", fontSize: "0.95rem", fontWeight: "600" }}>🎨 Chọn màu</h4>
+            <div style={{ display: "flex", gap: "0.8rem", flexWrap: "wrap" }}>
+              {allColors.map((color) => (
+                <button
+                  key={color?.id}
+                  type="button"
+                  onClick={() => setSelectedColor(color?.id)}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: "0.4rem",
+                    padding: "0.6rem 0.8rem",
+                    border: selectedColor === color?.id ? "3px solid var(--primary)" : "1px solid var(--border)",
+                    borderRadius: "8px",
+                    background: selectedColor === color?.id ? "rgba(124, 58, 237, 0.2)" : "transparent",
+                    cursor: "pointer",
+                    transition: "all 0.2s",
+                    boxShadow: selectedColor === color?.id ? "0 0 12px rgba(124, 58, 237, 0.6)" : "none",
+                    transform: selectedColor === color?.id ? "scale(1.05)" : "scale(1)"
+                  }}
+                  title={color?.name}
+                >
+                  <div
+                    style={{
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "100%",
+                      background: color?.hexCode || "#ccc",
+                      border: selectedColor === color?.id ? "3px solid var(--primary)" : "2px solid rgba(0,0,0,0.2)",
+                      boxShadow: selectedColor === color?.id ? `0 0 0 4px rgba(124, 58, 237, 0.4), inset 0 0 8px rgba(0,0,0,0.1)` : "0 2px 4px rgba(0,0,0,0.1)"
+                    }}
+                  />
+                  <span style={{ fontSize: "0.75rem", color: "#fff", textAlign: "center", maxWidth: "50px", wordBreak: "break-word", fontWeight: selectedColor === color?.id ? "600" : "400" }}>
+                    {color?.name}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Size Selection */}
+          <div>
+            <h4 style={{ marginBottom: "0.8rem", fontSize: "0.95rem", fontWeight: "600" }}>📏 Chọn size</h4>
+            <div style={{ display: "flex", gap: "0.8rem", flexWrap: "wrap" }}>
+              {allSizes.map((size) => {
+                return (
+                  <button
+                    key={size?.id}
+                    type="button"
+                    onClick={() => setSelectedSize(size?.id)}
+                    style={{
+                      padding: "0.6rem 1.2rem",
+                      border: selectedSize === size?.id ? "3px solid var(--primary)" : "1px solid var(--border)",
+                      borderRadius: "8px",
+                      background: selectedSize === size?.id ? "var(--primary)" : "transparent",
+                      color: selectedSize === size?.id ? "#fff" : "var(--text)",
+                      cursor: "pointer",
+                      fontWeight: selectedSize === size?.id ? "600" : "500",
+                      transition: "all 0.2s",
+                      boxShadow: selectedSize === size?.id ? "0 0 12px rgba(124, 58, 237, 0.6)" : "none",
+                      transform: selectedSize === size?.id ? "scale(1.05)" : "scale(1)"
+                    }}
+                  >
+                    {size?.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Quantity & Add to Cart */}
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: "1rem" }}>
+            <div style={{ marginBottom: "1rem" }}>
+              <h4 style={{ marginBottom: "0.8rem", fontSize: "0.95rem", fontWeight: "600" }}>📦 Số lượng</h4>
+              <div style={{ display: "flex", gap: "0.5rem", maxWidth: "140px" }}>
+                <button
+                  type="button"
+                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                  disabled={quantity === 1 || currentStock === 0}
+                  style={{
+                    width: "36px",
+                    height: "36px",
+                    border: "1px solid var(--border)",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                    fontSize: "1rem"
+                  }}
+                >
+                  −
+                </button>
+                <input
+                  type="number"
+                  min="1"
+                  max={currentStock}
+                  value={quantity}
+                  onChange={(e) => setQuantity(Math.max(1, Math.min(currentStock, parseInt(e.target.value) || 1)))}
+                  style={{
+                    flex: 1,
+                    textAlign: "center",
+                    border: "1px solid var(--border)",
+                    borderRadius: "6px",
+                    padding: "0.5rem"
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setQuantity(Math.min(currentStock, quantity + 1))}
+                  disabled={quantity === currentStock || currentStock === 0}
+                  style={{
+                    width: "36px",
+                    height: "36px",
+                    border: "1px solid var(--border)",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                    fontSize: "1rem"
+                  }}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="btn-main"
+              onClick={handleAddToCart}
+              disabled={!selectedVariant || currentStock === 0 || adding}
+              style={{
+                width: "100%",
+                padding: "1rem",
+                marginBottom: "0.5rem",
+                fontSize: "1rem"
+              }}
+            >
+              {adding ? "Đang thêm..." : currentStock > 0 ? "🛒 Thêm vào giỏ" : "Hết hàng"}
+            </button>
+          </div>
+
+          {/* Summary */}
+          <div className="summary-list" style={{ background: "var(--surface3)", padding: "1rem", borderRadius: "8px", fontSize: "0.9rem" }}>
+            <p>Tồn kho toàn bộ <span><strong>{totalStock}</strong> sản phẩm</span></p>
+            <p>Số biến thể <span><strong>{variants?.length || 0}</strong></span></p>
+            {selectedVariant && <p>SKU <span><strong>{selectedVariant?.sku || "—"}</strong></span></p>}
+          </div>
         </div>
       </div>
     </div>
@@ -2372,6 +2584,8 @@ function App() {
   const [products, setProducts] = useState([]);
   const [variants, setVariants] = useState([]);
   const [detailProduct, setDetailProduct] = useState(null);
+  const [colors, setColors] = useState([]);
+  const [sizes, setSizes] = useState([]);
 
   useEffect(() => {
     if (activePage === "home" || activePage === "catalog") {
@@ -2381,6 +2595,12 @@ function App() {
       api.get("/api/product-variants")
         .then(data => setVariants(Array.isArray(data) ? data : []))
         .catch(() => setVariants([]));
+      api.get("/api/colors")
+        .then(data => setColors(Array.isArray(data) ? data : []))
+        .catch(() => setColors([]));
+      api.get("/api/sizes")
+        .then(data => setSizes(Array.isArray(data) ? data : []))
+        .catch(() => setSizes([]));
     }
   }, [activePage]);
 
@@ -2451,7 +2671,7 @@ function App() {
 
     switch (activePage) {
       case "home": return <HomePage products={products} variants={variants} onAddToCart={addToCart} user={user} onNavigate={navigate} onViewDetail={openDetail} />;
-      case "catalog": return <CatalogPage products={products} variants={variants} onAddToCart={addToCart} user={user} onNavigate={navigate} onViewDetail={openDetail} />;
+      case "catalog": return <CatalogPage products={products} variants={variants} onAddToCart={addToCart} user={user} onNavigate={navigate} onViewDetail={openDetail} colors={colors} sizes={sizes} />;
       case "cart": return <CartPage user={user} cartCount={cartCount} setCartCount={setCartCount} onNavigate={navigate} />;
       case "checkout": return <CheckoutPage user={user} onNavigate={navigate} />;
       case "orders": return <OrdersPage user={user} onNavigate={navigate} />;
@@ -2532,7 +2752,7 @@ function App() {
         onClose={() => setToast({ message: "", type: "" })}
       />
 
-      <ProductDetailModal detail={detailProduct} onClose={() => setDetailProduct(null)} />
+      <ProductDetailModal detail={detailProduct} onClose={() => setDetailProduct(null)} onAddToCart={addToCart} user={user} onNavigate={navigate} colors={colors} sizes={sizes} />
     </div>
   );
 }
