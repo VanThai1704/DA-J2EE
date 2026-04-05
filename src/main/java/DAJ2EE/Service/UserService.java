@@ -114,6 +114,10 @@ public class UserService {
             user.setPhone(userDetails.getPhone());
         }
 
+        if (userDetails.getAvatarUrl() != null) {
+            user.setAvatarUrl(userDetails.getAvatarUrl());
+        }
+
         if (userDetails.getPassword() != null) {
             user.setPassword(userDetails.getPassword());
         }
