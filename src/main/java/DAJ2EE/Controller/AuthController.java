@@ -12,7 +12,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
-@RestController
+@RestController("legacyAuthController")
 @RequestMapping("/api/auth")
 public class AuthController {
 
