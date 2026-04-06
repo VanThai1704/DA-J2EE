@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@RestController
+@RestController("legacyUserController")
 @RequestMapping("/api/users")
 public class UserController {
 
