@@ -16,7 +16,7 @@ import java.util.Date;
 public class JwtService {
     @Value("${jwt.secret}")
     private String sercet;
-    @Value("${jwt.expiration")
+    @Value("${jwt.expiration}")
     private String expiration;
     
     private SecretKey getKey(){
@@ -24,10 +24,14 @@ public class JwtService {
     }
 
     public String generateToken(User user) {
+        String roleCode = null;
+        if (user.getRole() != null) {
+            roleCode = user.getRole().getCode();
+        }
         return Jwts.builder()
                 .setSubject(user.getUsername())
                 .claim("id", user.getId())
-                .claim("role", user.getRole().name())
+                .claim("role", roleCode)
                 .setIssuedAt(new Date(System.currentTimeMillis()))
                 .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 12))
                 .signWith(getKey(), SignatureAlgorithm.HS256)
