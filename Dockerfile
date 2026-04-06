@@ -1,17 +1,14 @@
-FROM maven:3.9.9-eclipse-temurin-21
+FROM eclipse-temurin:25-jdk
+
+RUN apt-get update && apt-get install -y maven && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY . .
 
+RUN java -version && mvn -version
 RUN mvn clean package -DskipTests
-
-FROM eclipse-temurin:25-jdk
-
-WORKDIR /app
-
-COPY --from=0 /app/target/*.jar app.jar
 
 EXPOSE 10000
 
-CMD ["sh", "-c", "java -Dserver.port=${PORT:-10000} -jar app.jar"]
+CMD ["sh", "-c", "java -Dserver.port=${PORT:-10000} -jar target/*.jar"]
